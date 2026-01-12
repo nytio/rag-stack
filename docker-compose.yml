@@ -1,0 +1,98 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: rag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ragdb
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d ragdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+    extra_hosts:
+      - "model-runner.docker.internal:host-gateway"
+    models:
+      - llm
+      - embed
+    environment:
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      WEBUI_AUTH: "True"
+
+      # DB principal (puede ser el mismo postgres)
+      DATABASE_URL: postgresql://rag:${POSTGRES_PASSWORD_URLENC}@postgres:5432/ragdb
+
+      # Vector DB RAG en pgvector (soportado por Open WebUI) :contentReference[oaicite:7]{index=7}
+      VECTOR_DB: pgvector
+      PGVECTOR_DB_URL: postgresql://rag:${POSTGRES_PASSWORD_URLENC}@postgres:5432/ragdb
+
+      # DMR OpenAI-compatible (para chat en WebUI)
+      OPENAI_API_BASE_URL: ${LLM_URL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-local}
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN}
+      USER_AGENT: ${USER_AGENT}
+
+
+  rag-api:
+    build: ./rag-api
+    container_name: rag-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    extra_hosts:
+      - "model-runner.docker.internal:host-gateway"
+    models:
+      - llm
+      - embed
+    environment:
+      DATABASE_URL: postgresql://rag:${POSTGRES_PASSWORD_URLENC}@postgres:5432/ragdb
+
+      # Compose Models inyecta LLM_URL/LLM_MODEL y EMBED_URL/EMBED_MODEL automáticamente.
+      # Este servicio los consume tal cual:
+      LLM_BASE_URL: ${LLM_URL}        # debe terminar en /v1
+      LLM_MODEL: ${LLM_MODEL}
+      EMBED_BASE_URL: ${EMBED_URL}    # debe terminar en /v1
+      EMBED_MODEL: ${EMBED_MODEL}
+      EMBED_DIM: ${EMBED_DIM:-}
+
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-local}
+
+      # Tabla/colección lógica dentro de Postgres para los vectores
+      VECTOR_TABLE_NAME: rag_chunks
+
+      # (Opcional) clave simple para proteger la API
+      RAG_API_KEY: ${RAG_API_KEY:-}
+
+
+volumes:
+  pgdata:
+  open-webui-data:
+
+models:
+  llm:
+    model: ai/granite-4.0-h-micro:3B-Q4_K_M
+  embed:
+    model: ai/granite-embedding-multilingual:278M-F16
