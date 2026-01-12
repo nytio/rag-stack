@@ -69,12 +69,12 @@ docker model start-runner
 
 4) Descarga el modelo:
 ```bash
-docker model pull ai/granite-4.0-h-small:32B-Q4_K_M
+docker model pull ai/smollm2
 ```
 
 5) Ejecuta el modelo (lo deja disponible para servir solicitudes):
 ```bash
-docker model run ai/granite-4.0-h-small:32B-Q4_K_M
+docker model run ai/smollm2
 ```
 
 6) Uso en terminal (CLI):
@@ -102,7 +102,7 @@ docker model unload smollm2
 
 9) Para borrarlo del disco, usa `rm`:
 ```bash
-docker model rm ai/granite-4.0-h-small:32B-Q4_K_M
+docker model rm ai/smollm2
 ```
 
 Nota: el `docker-compose.yml` está preparado para consumir endpoints OpenAI-compatible (URLs que terminan en `/v1`). Si tu instalación soporta Compose Models, el stack puede inyectar `LLM_URL/LLM_MODEL` y `EMBED_URL/EMBED_MODEL`; si no, define esas variables en tu entorno o en un `.env`.
