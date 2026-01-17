@@ -95,4 +95,4 @@ models:
   llm:
     model: ai/granite-4.0-h-micro:3B-Q4_K_M
   embed:
-    model: ai/granite-embedding-multilingual:278M-F16
+    model: ai/granite-embedding-multilingual
