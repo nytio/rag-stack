@@ -46,7 +46,7 @@ X-API-Key: <tu-clave>
 curl -X POST http://localhost:8000/ingest \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <tu-clave>" \
-  -d '{"doc_id":"doc-1","text":"Texto del documento...","metadata":{"filename":"manual.pdf","page":3,"chunk_index":12,"source":"docs/manual.pdf"},"chunk_size":900,"chunk_overlap":120}'
+  -d '{"doc_id":"doc-1","text":"Texto del documento...","metadata":{"filename":"manual.pdf","page":3},"chunk_size":900,"chunk_overlap":120}'
 ```
 
 Parámetros del `-d`:
