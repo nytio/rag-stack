@@ -83,6 +83,11 @@ def test_ingest_and_query() -> None:
     assert "sources" in query_data
     assert isinstance(query_data["sources"], list)
     assert query_data["sources"], "Expected at least one source chunk"
+    assert query_data["answer"] != (
+        "No tengo evidencia suficiente en los documentos para responder con certeza."
+    )
+    assert any(unique_token in src.get("text", "") for src in query_data["sources"])
+    assert any(src.get("metadata", {}).get("doc_id") == doc_id for src in query_data["sources"])
 
     filtered_payload = {
         "question": f"Encuentra el token del documento filtrado.\n{unique_token}",
@@ -102,6 +107,9 @@ def test_ingest_and_query() -> None:
     assert filtered_data["sources"], "Expected sources with metadata filter applied"
     assert all(src.get("metadata", {}).get("doc_id") == doc_id for src in filtered_data["sources"])
     assert any(unique_token in src.get("text", "") for src in filtered_data["sources"])
+    assert filtered_data["answer"] != (
+        "No tengo evidencia suficiente en los documentos para responder con certeza."
+    )
 
 
 def test_requires_api_key_on_ingest() -> None:
