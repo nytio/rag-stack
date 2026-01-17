@@ -65,3 +65,14 @@ curl -X POST http://localhost:8000/query \
   -H "X-API-Key: <tu-clave>" \
   -d '{"question":"¿Qué dice el documento sobre X?","top_k":5,"strict":true,"filters":{"doc_id":"doc-1"}}'
 ```
+
+Parámetros del `-d`:
+- `question` (string, requerido): pregunta del usuario.
+- `top_k` (int, opcional): cantidad de chunks a recuperar; mínimo 1, máximo 20.
+- `strict` (bool, opcional): si es `true`, el LLM debe reconocer cuando no hay evidencia suficiente.
+- `filters` (object, opcional): filtros por metadata (p. ej. `doc_id`).
+
+Limitaciones esperadas:
+- La respuesta depende del contenido previamente ingestado.
+- `filters` solo aplica sobre metadatos disponibles en los chunks.
+- `top_k` está limitado a 20.
