@@ -43,7 +43,7 @@ Opcional:
 - EMBED_DIM (fijo en 768 para `ai/granite-embedding-multilingual`; si se define debe ser 768)
 
 ## Ejemplos
-Ingest:
+### Ingest
 ```
 curl -X POST http://localhost:8000/ingest \
   -H "Content-Type: application/json" \
@@ -71,7 +71,7 @@ Sugerencias:
 - Mantén los valores cortos y útiles para filtros/seguimiento.
 - Guarda solo metadatos que planeas filtrar en Query.
 
-Query:
+### Query
 ```
 curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
