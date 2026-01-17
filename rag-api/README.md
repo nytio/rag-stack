@@ -7,7 +7,17 @@
 
 ## Auth (opcional)
 Si defines `RAG_API_KEY`, debes enviar header:
-`X-API-Key: <tu-clave>`
+```
+X-API-Key: <tu-clave>
+```
+
+Ejemplo con `curl`:
+```
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <tu-clave>" \
+  -d '{"question":"¿Qué dice el documento sobre X?","top_k":5,"strict":true,"filters":{"doc_id":"doc-1"}}'
+```
 
 ## Variables de entorno requeridas
 - DATABASE_URL
@@ -19,12 +29,18 @@ Opcional:
 - EMBED_DIM (fijo en 768 para `ai/granite-embedding-multilingual`; si se define debe ser 768)
 
 ## Ejemplos
-Ingest:
+Ingest (con auth):
+```
 curl -X POST http://localhost:8000/ingest \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: <tu-clave>" \
   -d '{"doc_id":"doc-1","text":"Texto del documento...","metadata":{"title":"Mi doc"},"chunk_size":900,"chunk_overlap":120}'
+```
 
-Query:
+Query (con auth):
+```
 curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: <tu-clave>" \
   -d '{"question":"¿Qué dice el documento sobre X?","top_k":5,"strict":true,"filters":{"doc_id":"doc-1"}}'
+```
