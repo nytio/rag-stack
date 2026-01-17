@@ -8,7 +8,6 @@
 Ejemplo:
 ```
 curl http://localhost:8000/healthz
-{"ok":true,"db_ok":true,"vector_table":"rag_chunks","embed_dim":768,"filter_mode":"advanced","llm_model":"ai/granite-4.0-h-micro","embed_model":"ai/granite-embedding-multilingual"}
 ```
 
 Respuesta (parámetros):
