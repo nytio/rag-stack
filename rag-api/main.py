@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, Header, HTTPException
@@ -269,7 +270,6 @@ def _build_filters(raw_filters: Dict[str, Any]) -> Optional[Any]:
 # -----------------------------
 # App & lifecycle
 # -----------------------------
-app = FastAPI(title="rag-api (LlamaIndex + pgvector + DMR)", version="0.1.0")
 
 _storage_context: Optional[StorageContext] = None
 _index: Optional[VectorStoreIndex] = None
@@ -280,8 +280,7 @@ _embedder = None
 _embed_dim: Optional[int] = None
 
 
-@app.on_event("startup")
-def startup() -> None:
+def _init_app() -> None:
     global _storage_context, _index, _llm, _embedder, _engine, _vector_store, _embed_dim
 
     _validate_env()
@@ -312,6 +311,27 @@ def startup() -> None:
         storage_context=_storage_context,
         embed_model=_embedder,
     )
+
+
+def _shutdown_app() -> None:
+    if _engine is not None:
+        _engine.dispose()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    _init_app()
+    try:
+        yield
+    finally:
+        _shutdown_app()
+
+
+app = FastAPI(
+    title="rag-api (LlamaIndex + pgvector + DMR)",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 
 @app.get("/healthz")
