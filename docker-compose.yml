@@ -93,6 +93,6 @@ volumes:
 
 models:
   llm:
-    model: ai/granite-4.0-h-micro:3B-Q4_K_M
+    model: ai/granite-4.0-h-micro
   embed:
     model: ai/granite-embedding-multilingual
