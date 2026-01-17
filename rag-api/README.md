@@ -63,10 +63,12 @@ Parámetros del `-d`:
 Ejemplos de Metadata recomendados:
 - `page` o `page_number` (int): número de página del chunk.
 - `page_start` / `page_end` (int): solo si el chunk cruza varias páginas.
-- `filename` (string): nombre del archivo.
+- `document` (string): título del documento.
 - `source` o `url` (string): origen del documento.
 - `section` o `heading` (string): sección o encabezado si lo extraes.
 - `chunk_index` (int): índice del chunk dentro del documento.
+- `question` (string): preguntas que el chunk puede resolver.
+- `adjacent_summary` (string): resumen de los chunks adyacentes.
 
 Sugerencias:
 - Usa tipos consistentes (si `page` es int, siempre int).
