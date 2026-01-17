@@ -1,4 +1,6 @@
-# rag-api (FastAPI + LlamaIndex + Postgres/pgvector + Docker Model Runner)
+# rag-api
+
+Servicio RAG construido con FastAPI, LlamaIndex y Postgres/pgvector, integrado con un runner de modelos OpenAI-compatible (Docker Model Runner).
 
 ## Endpoints
 | Método | Ruta | Descripción |
