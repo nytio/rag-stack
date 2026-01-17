@@ -24,7 +24,10 @@ This repository hosts a small RAG stack built around a FastAPI service, Postgres
 - No automated test suite is present. Favor manual checks:
   - `curl http://localhost:8000/healthz`
   - Ingest/query examples in `rag-api/README.md`.
-- If you add tests, document how to run them in this file.
+- Pytest suites (unit + integration) live under `rag-api/tests/`:
+  - `pip install -r rag-api/requirements-dev.txt`
+  - `python -m pytest -m unit` (unit tests)
+  - `python -m pytest -m integration` (requires live DB + LLM/embeddings; set `RAG_API_BASE` for API E2E tests)
 
 ## Commit & Pull Request Guidelines
 - Commit history favors short, descriptive messages (often Spanish). Keep them concise and imperative.

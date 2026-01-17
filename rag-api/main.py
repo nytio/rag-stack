@@ -285,6 +285,8 @@ def startup() -> None:
     global _storage_context, _index, _llm, _embedder, _engine, _vector_store, _embed_dim
 
     _validate_env()
+    if _FILTER_MODE == "none":
+        raise RuntimeError("Metadata filters are not supported by this LlamaIndex build.")
 
     # DB connection (validación temprana)
     _engine = create_engine(DATABASE_URL, pool_pre_ping=True)
@@ -328,6 +330,7 @@ def healthz() -> Dict[str, Any]:
         "db_ok": db_ok,
         "vector_table": VECTOR_TABLE_NAME,
         "embed_dim": _embed_dim,
+        "filter_mode": _FILTER_MODE,
         "llm_model": LLM_MODEL,
         "embed_model": EMBED_MODEL,
     }
