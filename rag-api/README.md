@@ -20,8 +20,8 @@ Respuesta (parámetros):
 - `llm_model`: modelo LLM configurado.
 - `embed_model`: modelo de embeddings configurado.
 
-## Auth (opcional)
-Si defines `RAG_API_KEY`, debes enviar header:
+## Auth (obligatoria)
+La Auth no es opcional: siempre debes enviar el header `X-API-Key` en cada request.
 ```
 X-API-Key: <tu-clave>
 ```
