@@ -138,3 +138,45 @@ def test_query_builds_response_and_sources(monkeypatch: pytest.MonkeyPatch) -> N
     assert resp.sources[0].text == "contenido"
     assert resp.sources[0].metadata["doc_id"] == "doc-1"
     assert dummy_engine.last_query.startswith("Instrucciones:")
+
+
+def test_query_strict_false_does_not_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    dummy_index = DummyIndex()
+    monkeypatch.setattr(main, "_index", dummy_index)
+    monkeypatch.setattr(main, "RAG_API_KEY", "")
+    monkeypatch.setattr(main, "_llm", object())
+
+    dummy_response = DummyResponse(text="respuesta", source_nodes=[])
+    dummy_engine = DummyQueryEngine(response=dummy_response)
+
+    def _from_args(retriever: Any, llm: Any):
+        return dummy_engine
+
+    monkeypatch.setattr(main, "_build_filters", lambda _: None)
+    monkeypatch.setattr(main.RetrieverQueryEngine, "from_args", staticmethod(_from_args))
+
+    question = "pregunta sin prefijo"
+    resp = main.query(main.QueryRequest(question=question, top_k=3, strict=False))
+
+    assert resp.answer == "respuesta"
+    assert dummy_engine.last_query == question
+
+
+def test_query_without_source_nodes_returns_empty_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+    dummy_index = DummyIndex()
+    monkeypatch.setattr(main, "_index", dummy_index)
+    monkeypatch.setattr(main, "RAG_API_KEY", "")
+    monkeypatch.setattr(main, "_llm", object())
+
+    dummy_response = DummyResponse(text="respuesta", source_nodes=[])
+    dummy_engine = DummyQueryEngine(response=dummy_response)
+
+    def _from_args(retriever: Any, llm: Any):
+        return dummy_engine
+
+    monkeypatch.setattr(main, "_build_filters", lambda _: None)
+    monkeypatch.setattr(main.RetrieverQueryEngine, "from_args", staticmethod(_from_args))
+
+    resp = main.query(main.QueryRequest(question="pregunta", top_k=3, strict=True))
+
+    assert resp.sources == []

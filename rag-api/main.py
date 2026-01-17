@@ -350,7 +350,7 @@ def ingest(req: IngestRequest, x_api_key: Optional[str] = Header(default=None)) 
     metadata = dict(req.metadata or {})
     metadata["doc_id"] = req.doc_id
 
-    doc = Document(text=req.text, metadata=metadata)
+    doc = Document(text=req.text, metadata=metadata, id_=req.doc_id)
 
     # 2) Chunking → Nodes
     splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)

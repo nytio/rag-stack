@@ -82,3 +82,80 @@ def test_ingest_and_query() -> None:
     assert "answer" in query_data
     assert "sources" in query_data
     assert isinstance(query_data["sources"], list)
+    assert query_data["sources"], "Expected at least one source chunk"
+
+    filtered_payload = {
+        "question": f"Encuentra el token del documento filtrado.\n{unique_token}",
+        "top_k": 3,
+        "strict": True,
+        "filters": {"doc_id": doc_id},
+    }
+
+    filtered_resp = httpx.post(
+        f"{base}/query",
+        json=filtered_payload,
+        headers=headers,
+        timeout=60.0,
+    )
+    filtered_resp.raise_for_status()
+    filtered_data = filtered_resp.json()
+    assert filtered_data["sources"], "Expected sources with metadata filter applied"
+    assert all(src.get("metadata", {}).get("doc_id") == doc_id for src in filtered_data["sources"])
+    assert any(unique_token in src.get("text", "") for src in filtered_data["sources"])
+
+
+def test_requires_api_key_on_ingest() -> None:
+    if not os.getenv("RAG_API_KEY"):
+        pytest.skip("RAG_API_KEY not set; auth not enforced in this environment")
+    base = _api_base()
+    payload = {
+        "doc_id": "auth-missing",
+        "text": "Texto de prueba para auth.",
+    }
+    resp = httpx.post(f"{base}/ingest", json=payload, timeout=30.0)
+    assert resp.status_code == 401
+
+
+def test_requires_api_key_on_query() -> None:
+    if not os.getenv("RAG_API_KEY"):
+        pytest.skip("RAG_API_KEY not set; auth not enforced in this environment")
+    base = _api_base()
+    payload = {"question": "Hola", "top_k": 1}
+    resp = httpx.post(f"{base}/query", json=payload, timeout=30.0)
+    assert resp.status_code == 401
+
+
+def test_ingest_validation_errors() -> None:
+    base = _api_base()
+    headers = {"Content-Type": "application/json", **_auth_headers()}
+    invalid_payloads = [
+        {"doc_id": "bad-1", "text": "x", "chunk_size": 199},
+        {"doc_id": "bad-2", "text": "x", "chunk_size": 4001},
+        {"doc_id": "bad-3", "text": "x", "chunk_overlap": -1},
+        {"doc_id": "bad-4", "text": "x", "chunk_overlap": 1001},
+    ]
+    for payload in invalid_payloads:
+        resp = httpx.post(
+            f"{base}/ingest",
+            json=payload,
+            headers=headers,
+            timeout=30.0,
+        )
+        assert resp.status_code == 422
+
+
+def test_query_validation_errors() -> None:
+    base = _api_base()
+    headers = {"Content-Type": "application/json", **_auth_headers()}
+    invalid_payloads = [
+        {"question": "hola", "top_k": 0},
+        {"question": "hola", "top_k": 21},
+    ]
+    for payload in invalid_payloads:
+        resp = httpx.post(
+            f"{base}/query",
+            json=payload,
+            headers=headers,
+            timeout=30.0,
+        )
+        assert resp.status_code == 422
