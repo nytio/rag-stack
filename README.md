@@ -105,19 +105,18 @@ docker model unload smollm2
 docker model rm ai/smollm2
 ```
 
-Nota: el `docker-compose.yml` está preparado para consumir endpoints OpenAI-compatible (URLs que terminan en `/v1`). Si tu instalación soporta Compose Models, el stack puede inyectar `LLM_URL/LLM_MODEL` y `EMBED_URL/EMBED_MODEL`; si no, define esas variables en tu entorno o en un `.env`.
+Nota: el `docker-compose.yml` está preparado para consumir endpoints OpenAI-compatible (URLs que terminan en `/v1`) usando un único `OPENAI_API_BASE` para chat y embeddings.
 
 ## Configuración (variables de entorno)
 
 Para `rag-api` (requeridas):
 - `DATABASE_URL`
-- `LLM_BASE_URL` (OpenAI-compatible, debe terminar en `/v1`)
+- `OPENAI_API_BASE` (OpenAI-compatible, debe terminar en `/v1`)
 - `LLM_MODEL`
-- `EMBED_BASE_URL` (OpenAI-compatible, debe terminar en `/v1`)
 - `EMBED_MODEL`
 
 Opcionales:
-- `EMBED_DIM` (si no se define, se infiere llamando al modelo de embeddings)
+- `EMBED_DIM` (fijo en 768 para `ai/granite-embedding-multilingual`; si se define debe ser 768)
 - `OPENAI_API_KEY` (puede ser dummy en local)
 - `RAG_API_KEY` (si se define, exige header `X-API-Key`)
 
@@ -132,9 +131,8 @@ POSTGRES_PASSWORD_URLENC=changeme
 WEBUI_SECRET_KEY=changeme
 OPENAI_API_KEY=sk-local
 
-# URLs OpenAI-compatible del runner (desde contenedores)
-LLM_URL=http://model-runner.docker.internal:12434/v1
-EMBED_URL=http://model-runner.docker.internal:12434/v1
+# URL OpenAI-compatible del runner (desde contenedores)
+OPENAI_API_BASE=http://model-runner.docker.internal:12434/v1
 
 # Nombres de modelos tal como aparecen en `docker model list`
 LLM_MODEL=ai/granite-4.0-h-small:32B-Q4_K_M
@@ -146,7 +144,7 @@ Tip: para generar `POSTGRES_PASSWORD_URLENC`:
 python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("changeme"))'
 ```
 
-En Compose, `DATABASE_URL` apunta al Postgres interno y los servicios consumen `LLM_URL/LLM_MODEL` y `EMBED_URL/EMBED_MODEL` para conectarse al runner.
+En Compose, `DATABASE_URL` apunta al Postgres interno y los servicios consumen `OPENAI_API_BASE`, `LLM_MODEL` y `EMBED_MODEL` para conectarse al runner.
 
 ## Ejecutar el stack
 
@@ -191,6 +189,6 @@ Ejemplos de ingest/query: ver `rag-api/README.md`.
 - `POST /query`: recupera top-k similares (y filtros) → arma contexto → LLM responde → devuelve respuesta + fuentes.
 
 ## Troubleshooting
-- `Missing required env vars`: revisa `LLM_BASE_URL/EMBED_BASE_URL` y que terminen en `/v1`.
-- Si `EMBED_DIM` no se infiere, define `EMBED_DIM` explícitamente.
+- `Missing required env vars`: revisa `OPENAI_API_BASE` y que termine en `/v1`.
+- `EMBED_DIM is fixed to 768`: estás intentando cambiar la dimensión; debe ser 768.
 - Si la DB no conecta: confirma `POSTGRES_PASSWORD_URLENC` y el estado de `postgres` en `docker compose ps`.

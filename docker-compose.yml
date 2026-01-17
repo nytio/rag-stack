@@ -47,7 +47,7 @@ services:
       PGVECTOR_DB_URL: postgresql://rag:${POSTGRES_PASSWORD_URLENC}@postgres:5432/ragdb
 
       # DMR OpenAI-compatible (para chat en WebUI)
-      OPENAI_API_BASE_URL: ${LLM_URL}
+      OPENAI_API_BASE_URL: ${OPENAI_API_BASE}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-local}
       CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN}
       USER_AGENT: ${USER_AGENT}
@@ -70,13 +70,11 @@ services:
     environment:
       DATABASE_URL: postgresql://rag:${POSTGRES_PASSWORD_URLENC}@postgres:5432/ragdb
 
-      # Compose Models inyecta LLM_URL/LLM_MODEL y EMBED_URL/EMBED_MODEL automáticamente.
-      # Este servicio los consume tal cual:
-      LLM_BASE_URL: ${LLM_URL}        # debe terminar en /v1
+      # Endpoint OpenAI-compatible (mismo para chat y embeddings).
+      OPENAI_API_BASE: ${OPENAI_API_BASE}  # debe terminar en /v1
       LLM_MODEL: ${LLM_MODEL}
-      EMBED_BASE_URL: ${EMBED_URL}    # debe terminar en /v1
       EMBED_MODEL: ${EMBED_MODEL}
-      EMBED_DIM: ${EMBED_DIM:-}
+      EMBED_DIM: ${EMBED_DIM:-768}
 
       OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-local}
 

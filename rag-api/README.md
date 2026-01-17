@@ -11,13 +11,12 @@ Si defines `RAG_API_KEY`, debes enviar header:
 
 ## Variables de entorno requeridas
 - DATABASE_URL
-- LLM_BASE_URL (OpenAI-compatible, debe terminar en /v1)
+- OPENAI_API_BASE (OpenAI-compatible, debe terminar en /v1)
 - LLM_MODEL
-- EMBED_BASE_URL (OpenAI-compatible, debe terminar en /v1)
 - EMBED_MODEL
 - OPENAI_API_KEY (puede ser dummy para local)
 Opcional:
-- EMBED_DIM (si no se define, se infiere llamando al modelo de embeddings)
+- EMBED_DIM (fijo en 768 para `ai/granite-embedding-multilingual`; si se define debe ser 768)
 
 ## Ejemplos
 Ingest:

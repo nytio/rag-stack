@@ -39,9 +39,8 @@ except Exception:
 # Config
 # -----------------------------
 DATABASE_URL = os.getenv("DATABASE_URL", "")
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")
+OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "").strip()
 LLM_MODEL = os.getenv("LLM_MODEL", "")
-EMBED_BASE_URL = os.getenv("EMBED_BASE_URL", "")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "")
 EMBED_DIM = os.getenv("EMBED_DIM", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-local")
@@ -53,6 +52,7 @@ RAG_API_KEY = os.getenv("RAG_API_KEY", "").strip()
 DEFAULT_CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "900"))
 DEFAULT_CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
 DEFAULT_TOP_K = int(os.getenv("TOP_K", "5"))
+DEFAULT_EMBED_DIM = 768
 
 
 # -----------------------------
@@ -105,10 +105,9 @@ def _validate_env() -> None:
     missing = []
     for k, v in [
         ("DATABASE_URL", DATABASE_URL),
-        ("LLM_BASE_URL", LLM_BASE_URL),
         ("LLM_MODEL", LLM_MODEL),
-        ("EMBED_BASE_URL", EMBED_BASE_URL),
         ("EMBED_MODEL", EMBED_MODEL),
+        ("OPENAI_API_BASE", OPENAI_API_BASE),
     ]:
         if not v:
             missing.append(k)
@@ -143,7 +142,7 @@ def _make_llm() -> OpenAILike:
     """
     return OpenAILike(
         model=LLM_MODEL,
-        api_base=LLM_BASE_URL,  # debe incluir /v1
+        api_base=OPENAI_API_BASE,  # debe incluir /v1
         api_key=OPENAI_API_KEY,
         is_chat_model=True,
     )
@@ -195,26 +194,21 @@ def _make_embedder() -> OpenAICompatibleEmbedding:
     """
     return OpenAICompatibleEmbedding(
         model=EMBED_MODEL,
-        api_base=EMBED_BASE_URL,  # debe incluir /v1
+        api_base=OPENAI_API_BASE,  # debe incluir /v1
         api_key=OPENAI_API_KEY,
     )
 
 
-def _get_embed_dim(embedder: BaseEmbedding) -> int:
+def _get_embed_dim() -> int:
     if EMBED_DIM:
         try:
-            return int(EMBED_DIM)
+            embed_dim = int(EMBED_DIM)
         except ValueError as exc:
             raise RuntimeError("EMBED_DIM must be an integer") from exc
-    try:
-        sample = embedder.get_text_embedding("dimension probe")
-    except Exception as exc:
-        raise RuntimeError(
-            "Unable to infer embedding dimension; set EMBED_DIM."
-        ) from exc
-    if not sample:
-        raise RuntimeError("Embedding model returned empty vector; set EMBED_DIM.")
-    return len(sample)
+        if embed_dim != DEFAULT_EMBED_DIM:
+            raise RuntimeError("EMBED_DIM is fixed to 768 for granite-embedding-multilingual.")
+        return DEFAULT_EMBED_DIM
+    return DEFAULT_EMBED_DIM
 
 
 def _build_filters(raw_filters: Dict[str, Any]) -> Optional[Any]:
@@ -303,7 +297,7 @@ def startup() -> None:
     # Model clients (OpenAI-compatible)
     _llm = _make_llm()
     _embedder = _make_embedder()
-    _embed_dim = _get_embed_dim(_embedder)
+    _embed_dim = _get_embed_dim()
 
     # Vector store in Postgres
     _vector_store = _make_pgvector_store(_embed_dim)

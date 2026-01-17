@@ -32,6 +32,6 @@ This repository hosts a small RAG stack built around a FastAPI service, Postgres
 - For API changes, include a sample request/response or `curl` snippet.
 
 ## Configuration & Security Notes
-- Required env vars: `DATABASE_URL`, `LLM_BASE_URL`, `LLM_MODEL`, `EMBED_BASE_URL`, `EMBED_MODEL`.
+- Required env vars: `DATABASE_URL`, `OPENAI_API_BASE`, `LLM_MODEL`, `EMBED_MODEL`.
 - `OPENAI_API_KEY` may be a dummy value for local usage.
 - `RAG_API_KEY` enables optional header auth (`X-API-Key`).
