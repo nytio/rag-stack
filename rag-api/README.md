@@ -5,6 +5,21 @@
 - POST /ingest
 - POST /query
 
+Ejemplo:
+```
+curl http://localhost:8000/healthz
+{"ok":true,"db_ok":true,"vector_table":"rag_chunks","embed_dim":768,"filter_mode":"advanced","llm_model":"ai/granite-4.0-h-micro","embed_model":"ai/granite-embedding-multilingual"}
+```
+
+Respuesta (parámetros):
+- `ok`: estado general del servicio.
+- `db_ok`: estado de la conexión a Postgres/pgvector.
+- `vector_table`: tabla usada para los embeddings.
+- `embed_dim`: dimensión de los embeddings.
+- `filter_mode`: modo de filtros soportado por LlamaIndex.
+- `llm_model`: modelo LLM configurado.
+- `embed_model`: modelo de embeddings configurado.
+
 ## Auth (opcional)
 Si defines `RAG_API_KEY`, debes enviar header:
 ```
