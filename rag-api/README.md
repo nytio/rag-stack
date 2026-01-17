@@ -58,6 +58,21 @@ Parámetros del `-d`:
 - `chunk_size` (int, opcional): tamaño de chunk; mínimo 200, máximo 4000.
 - `chunk_overlap` (int, opcional): solapamiento; mínimo 0, máximo 1000.
 
+Metadata recomendada para PDFs (ejemplos):
+- `page` o `page_number` (int): número de página del chunk.
+- `page_start` / `page_end` (int): si el chunk cruza varias páginas.
+- `filename` (string): nombre del archivo.
+- `source` o `url` (string): origen del documento.
+- `title` (string): título del documento.
+- `author` (string): autor si está disponible.
+- `section` o `heading` (string): sección o encabezado si lo extraes.
+- `chunk_index` (int): índice del chunk dentro del documento.
+
+Sugerencias:
+- Usa tipos consistentes (si `page` es int, siempre int).
+- Mantén los valores cortos y útiles para filtros/seguimiento.
+- Guarda solo metadatos que planeas filtrar en Query.
+
 Query:
 ```
 curl -X POST http://localhost:8000/query \
