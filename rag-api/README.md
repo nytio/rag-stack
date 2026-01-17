@@ -43,7 +43,7 @@ Opcional:
 - EMBED_DIM (fijo en 768 para `ai/granite-embedding-multilingual`; si se define debe ser 768)
 
 ## Ejemplos
-Ingest (con auth):
+Ingest:
 ```
 curl -X POST http://localhost:8000/ingest \
   -H "Content-Type: application/json" \
@@ -51,7 +51,14 @@ curl -X POST http://localhost:8000/ingest \
   -d '{"doc_id":"doc-1","text":"Texto del documento...","metadata":{"title":"Mi doc"},"chunk_size":900,"chunk_overlap":120}'
 ```
 
-Query (con auth):
+Parámetros del `-d`:
+- `doc_id` (string, requerido): identificador externo del documento.
+- `text` (string, requerido): texto ya extraído y limpio; no debe incluir imágenes ni binarios.
+- `metadata` (object, opcional): metadatos libres (p. ej. `title`, `source`).
+- `chunk_size` (int, opcional): tamaño de chunk; mínimo 200, máximo 4000.
+- `chunk_overlap` (int, opcional): solapamiento; mínimo 0, máximo 1000.
+
+Query:
 ```
 curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
