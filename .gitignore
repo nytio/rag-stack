@@ -5,3 +5,10 @@ env
 *.swp
 *.swo
 __pycache__/
+docs/**
+data-out/**
+data-in/.cache/**
+!docs/.gitkeep
+!data-out/.gitkeep
+!data-in/.cache/.gitkeep
+!data-out/.cache/.gitkeep
