@@ -73,8 +73,16 @@ python data-in/cli.py push --input ./data-out --rag-api http://localhost:8000 --
 
 - **Opcion A (`/ingest`)**: se envia el documento completo y `rag-api` re-chunkea. Mas simple, pero los chunks revisados no quedan 1:1 con lo indexado. Util para prototipos o cuando no necesitas trazabilidad fina.
   - **Preprocess recomendado**: enfocar en **extraccion y limpieza** (normalizar espacios, remover headers/footers repetidos, OCR si aplica). El chunking es secundario porque lo controla `rag-api` (puedes ajustar `chunk_size`/`chunk_overlap` al hacer `push`).
+  - **Comando ejemplo**:
+    ```bash
+    python data-in/cli.py preprocess --input ./docs --output ./data-out --recursive --ocr-auto
+    ```
 - **Opcion B (`/ingest_chunks`)**: se envian chunks pre-construidos. Conserva `chunk_index`, `page_start/end`, `heading_path` y garantiza 1:1 con el JSON. Recomendado cuando necesitas auditabilidad y control de calidad.
   - **Preprocess recomendado**: enfocar en **chunking de alta calidad** (parrafos completos, `chunk_size`/`chunk_overlap` afinados) y metadatos ricos por chunk. Revisar `document.json` antes de ingestar para asegurar cortes correctos y coherencia.
+  - **Comando ejemplo**:
+    ```bash
+    python data-in/cli.py preprocess --input ./docs --output ./data-out --recursive --chunk-size 900 --chunk-overlap 120 --strategy by_chars
+    ```
 
 ## Estructura
 
