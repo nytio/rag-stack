@@ -29,6 +29,8 @@ def push_documents(
     chunk_size: Optional[int] = None,
     chunk_overlap: Optional[int] = None,
     force: bool = False,
+    timeout: float = 60.0,
+    chunk_batch_size: Optional[int] = None,
 ) -> List[Tuple[str, int]]:
     docs = load_documents(input_dir)
     results: List[Tuple[str, int]] = []
@@ -47,7 +49,7 @@ def push_documents(
         doc_id: set(hashes) for doc_id, hashes in target_state.get("chunk_hashes", {}).items()
     }
 
-    with httpx.Client(timeout=60.0) as client:
+    with httpx.Client(timeout=timeout) as client:
         for doc in docs:
             status, sent_chunk_hashes = _push_document(
                 client,
@@ -60,6 +62,7 @@ def push_documents(
                 force=force,
                 file_hashes=file_hashes,
                 chunk_hashes_map=chunk_hashes_map,
+                chunk_batch_size=chunk_batch_size,
             )
             results.append((doc.document.doc_id, status))
             if _is_success(status):
@@ -93,6 +96,7 @@ def _push_document(
     force: bool,
     file_hashes: set,
     chunk_hashes_map: Dict[str, set],
+    chunk_batch_size: Optional[int],
 ) -> Tuple[int, Optional[List[str]]]:
     mode = mode.lower()
     doc_hash = doc.document.file_hash_sha256
@@ -104,7 +108,14 @@ def _push_document(
         chunks_to_send, chunk_hashes = _filter_chunks(doc, chunk_hashes_map, force)
         if not chunks_to_send and not force:
             return 208, []
-        status = _post_ingest_chunks(client, base_url, headers, doc, chunks_to_send)
+        status = _post_ingest_chunks_batched(
+            client,
+            base_url,
+            headers,
+            doc,
+            chunks_to_send,
+            chunk_batch_size=chunk_batch_size,
+        )
         if status != 404 or mode == "ingest_chunks":
             return status, chunk_hashes
 
@@ -164,6 +175,28 @@ def _post_ingest_chunks(
         return 404
     response.raise_for_status()
     return response.status_code
+
+
+def _post_ingest_chunks_batched(
+    client: httpx.Client,
+    base_url: str,
+    headers: Dict[str, str],
+    doc: DocumentJSON,
+    chunks: List[Any],
+    chunk_batch_size: Optional[int],
+) -> int:
+    if not chunks:
+        return 200
+    if not chunk_batch_size or chunk_batch_size <= 0 or len(chunks) <= chunk_batch_size:
+        return _post_ingest_chunks(client, base_url, headers, doc, chunks)
+
+    status = 200
+    for i in range(0, len(chunks), chunk_batch_size):
+        batch = chunks[i : i + chunk_batch_size]
+        status = _post_ingest_chunks(client, base_url, headers, doc, batch)
+        if status == 404:
+            return 404
+    return status
 
 
 def _document_text(doc: DocumentJSON) -> str:

@@ -87,6 +87,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     push.add_argument("--chunk-size", type=int, default=None)
     push.add_argument("--chunk-overlap", type=int, default=None)
+    push.add_argument("--timeout", type=float, default=60.0, help="Request timeout (seconds)")
+    push.add_argument(
+        "--chunk-batch-size",
+        type=int,
+        default=None,
+        help="Max chunks per /ingest_chunks request",
+    )
     push.add_argument("--force", action="store_true", help="Ignore local idempotency cache")
 
     return parser
@@ -266,6 +273,8 @@ def run_push(args: argparse.Namespace) -> int:
         chunk_size=args.chunk_size,
         chunk_overlap=args.chunk_overlap,
         force=args.force,
+        timeout=args.timeout,
+        chunk_batch_size=args.chunk_batch_size,
     )
     for doc_id, status in results:
         print(f"{doc_id}: {status}")
