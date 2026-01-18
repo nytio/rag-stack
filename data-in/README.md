@@ -49,7 +49,12 @@ python data-in/cli.py preprocess --input ./docs --output ./data-out --ocr-images
 Enriquecer con LLM (requiere `OPENAI_API_BASE` y `LLM_MODEL`):
 
 ```bash
-python data-in/cli.py enrich --input ./data-out --mode chunk --max-chunks 200
+python data-in/cli.py enrich \
+  --input ./data-out \
+  --mode chunk \
+  --max-chunks 200 \
+  --openai-api-base "http://localhost:12434/v1" \
+  --llm-model "ai/gpt-oss"
 ```
 
 Subir a `rag-api` (opcion A):
@@ -63,6 +68,11 @@ Subir chunks pre-construidos (opcion B, 1:1 con el JSON):
 ```bash
 python data-in/cli.py push --input ./data-out --rag-api http://localhost:8000 --mode ingest_chunks
 ```
+
+## Opcion A vs Opcion B
+
+- **Opcion A (`/ingest`)**: se envia el documento completo y `rag-api` re-chunkea. Mas simple, pero los chunks revisados no quedan 1:1 con lo indexado. Util para prototipos o cuando no necesitas trazabilidad fina.
+- **Opcion B (`/ingest_chunks`)**: se envian chunks pre-construidos. Conserva `chunk_index`, `page_start/end`, `heading_path` y garantiza 1:1 con el JSON. Recomendado cuando necesitas auditabilidad y control de calidad.
 
 ## Estructura
 
@@ -85,6 +95,7 @@ data-in/
 ## Artefactos generados
 
 - `data-out/<doc_id>/document.json` (pretty-printed y listo para revision).
+- `data-out/<doc_id>/chunks.jsonl` (un chunk por linea; util para pipelines streaming o cargas parciales).
 - `data-out/manifest.json` (resumen de corrida).
 
 ## Configuracion
