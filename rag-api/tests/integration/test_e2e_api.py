@@ -112,6 +112,51 @@ def test_ingest_and_query() -> None:
     )
 
 
+def test_ingest_chunks_with_real_embeddings() -> None:
+    base = _api_base()
+    headers = {"Content-Type": "application/json", **_auth_headers()}
+
+    health_resp = httpx.get(f"{base}/healthz", timeout=10.0)
+    health_resp.raise_for_status()
+    health_data = health_resp.json()
+    assert health_data.get("ok") is True
+    assert health_data.get("db_ok") is True
+
+    doc_id = f"e2e-chunks-{uuid.uuid4().hex}"
+    token_a = f"CHUNK_TOKEN_{uuid.uuid4().hex}"
+    token_b = f"CHUNK_TOKEN_{uuid.uuid4().hex}"
+
+    payload = {
+        "doc_id": doc_id,
+        "metadata": {"source": "integration-test", "dataset": "ingest_chunks"},
+        "chunks": [
+            {
+                "text": f"Chunk A de prueba. Token: {token_a}.",
+                "metadata": {"page": 1},
+                "chunk_id": "c1",
+            },
+            {
+                "text": f"Chunk B de prueba. Token: {token_b}.",
+                "metadata": {"page": 2},
+                "chunk_id": "c2",
+            },
+        ],
+    }
+
+    resp = httpx.post(
+        f"{base}/ingest_chunks",
+        json=payload,
+        headers=headers,
+        timeout=120.0,
+    )
+    if resp.status_code == 401 and "X-API-Key" not in headers:
+        pytest.skip("API requires RAG_API_KEY; set env var to run ingest_chunks E2E")
+    resp.raise_for_status()
+    data = resp.json()
+    assert data["doc_id"] == doc_id
+    assert data["chunks_indexed"] == len(payload["chunks"])
+
+
 def test_requires_api_key_on_ingest() -> None:
     if not os.getenv("RAG_API_KEY"):
         pytest.skip("RAG_API_KEY not set; auth not enforced in this environment")
