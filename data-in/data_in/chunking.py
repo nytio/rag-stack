@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from data_in.extract import TextBlock
 from data_in.schema import ChunkJSON, ChunkMetadata
 from data_in.utils import normalize_text, split_paragraphs, split_sentences
+
+# Embedding constraints (granite-embedding-multilingual): max 512 tokens, 768-dim vectors.
+MAX_EMBED_TOKENS = 512
+EMBED_DIM = 768
+_FALLBACK_TOKEN_RE = re.compile(r"\w+|[^\w\s]")
 
 
 @dataclass
@@ -28,6 +34,12 @@ def build_chunks(
     chunk_overlap: int,
     strategy: str,
 ) -> List[ChunkJSON]:
+    strategy = strategy.lower()
+    if strategy == "by_tokens" and chunk_size > MAX_EMBED_TOKENS:
+        chunk_size = MAX_EMBED_TOKENS
+    if chunk_overlap >= chunk_size:
+        chunk_overlap = max(chunk_size - 1, 0)
+
     segments = _build_segments(blocks, chunk_size, strategy)
     _apply_offsets(segments)
     size_fn = _measure_factory(strategy)
@@ -56,6 +68,7 @@ def build_chunks(
     if current:
         chunks.append(_segments_to_chunk(current, doc_id, len(chunks)))
 
+    chunks = _split_oversize_chunks(chunks, doc_id)
     return chunks
 
 
@@ -95,7 +108,7 @@ def _apply_offsets(segments: List[Segment]) -> None:
 def _segments_to_chunk(segments: List[Segment], doc_id: str, chunk_index: int) -> ChunkJSON:
     text = "\n\n".join(seg.text for seg in segments)
     text_norm = normalize_text(text)
-    chunk_hash = hashlib.sha1(text_norm.encode("utf-8")).hexdigest()
+    chunk_hash = make_chunk_hash(text_norm)
 
     page_numbers = [seg.page_number for seg in segments if seg.page_number is not None]
     page_start = min(page_numbers) if page_numbers else None
@@ -151,8 +164,11 @@ def _measure_factory(strategy: str) -> Callable[[str], int]:
     if strategy == "by_sentences":
         return lambda text: max(1, len(split_sentences(text)))
     if strategy == "by_tokens":
-        return _token_count
+        return count_tokens
     return lambda text: max(1, len(text))
+
+def count_tokens(text: str) -> int:
+    return _token_count(text)
 
 
 def _token_count(text: str) -> int:
@@ -162,7 +178,43 @@ def _token_count(text: str) -> int:
         encoding = tiktoken.get_encoding("cl100k_base")
         return max(1, len(encoding.encode(text)))
     except Exception:
-        return max(1, len(text.split()))
+        return max(1, len(_FALLBACK_TOKEN_RE.findall(text)))
+
+
+def _tokenize(text: str) -> Tuple[Optional[Sequence[int]], Optional[List[str]]]:
+    try:
+        import tiktoken  # type: ignore
+
+        encoding = tiktoken.get_encoding("cl100k_base")
+        return encoding.encode(text), None
+    except Exception:
+        return None, _FALLBACK_TOKEN_RE.findall(text)
+
+
+def split_text_by_tokens(text: str, max_tokens: int) -> List[str]:
+    if max_tokens <= 0:
+        return [text]
+    token_ids, fallback_tokens = _tokenize(text)
+    if token_ids is not None:
+        import tiktoken  # type: ignore
+
+        encoding = tiktoken.get_encoding("cl100k_base")
+        parts = []
+        for i in range(0, len(token_ids), max_tokens):
+            parts.append(encoding.decode(token_ids[i : i + max_tokens]))
+        return parts
+
+    if not fallback_tokens:
+        return [text]
+    parts = []
+    for i in range(0, len(fallback_tokens), max_tokens):
+        parts.append(" ".join(fallback_tokens[i : i + max_tokens]))
+    return parts
+
+
+def make_chunk_hash(text: str) -> str:
+    text_norm = normalize_text(text)
+    return hashlib.sha1(text_norm.encode("utf-8")).hexdigest()
 
 
 def _split_long_paragraph(
@@ -212,3 +264,53 @@ def _split_by_chars(text: str, chunk_size: int) -> List[str]:
         parts.append(text[start:end])
         start = end
     return parts
+
+
+def _split_oversize_chunks(chunks: List[ChunkJSON], doc_id: str) -> List[ChunkJSON]:
+    if not chunks:
+        return chunks
+    normalized: List[ChunkJSON] = []
+    for chunk in chunks:
+        token_count = count_tokens(chunk.text)
+        if token_count <= MAX_EMBED_TOKENS:
+            normalized.append(chunk)
+            continue
+
+        parts = split_text_by_tokens(chunk.text, MAX_EMBED_TOKENS)
+        if not parts:
+            normalized.append(chunk)
+            continue
+
+        source_text = chunk.text
+        search_pos = 0
+        for part in parts:
+            part_norm = normalize_text(part)
+            found = source_text.find(part_norm, search_pos)
+            if found == -1:
+                found = search_pos
+            start = found
+            end = start + len(part_norm)
+            search_pos = end
+
+            metadata = chunk.metadata.model_dump()
+            metadata["chunk_hash"] = make_chunk_hash(part_norm)
+            metadata["char_start"] = chunk.metadata.char_start + start
+            metadata["char_end"] = chunk.metadata.char_start + end
+
+            normalized.append(
+                ChunkJSON(
+                    chunk_index=-1,
+                    chunk_id=None,
+                    text=part_norm,
+                    metadata=ChunkMetadata(**metadata),
+                )
+            )
+
+    reindexed: List[ChunkJSON] = []
+    for idx, chunk in enumerate(normalized):
+        reindexed.append(
+            chunk.model_copy(
+                update={"chunk_index": idx, "chunk_id": f"{doc_id}:{idx}"}
+            )
+        )
+    return reindexed

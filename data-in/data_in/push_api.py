@@ -6,7 +6,15 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import httpx
 
+from data_in.chunking import MAX_EMBED_TOKENS, count_tokens
+from data_in.chunking import (
+    MAX_EMBED_TOKENS,
+    count_tokens,
+    make_chunk_hash,
+    split_text_by_tokens,
+)
 from data_in.schema import DocumentJSON
+from data_in.utils import normalize_text
 
 STATE_FILE = ".push_state.json"
 
@@ -147,8 +155,12 @@ def _post_ingest(
         "metadata": metadata,
     }
     if chunk_size is not None:
+        if chunk_size > MAX_EMBED_TOKENS:
+            chunk_size = MAX_EMBED_TOKENS
         payload["chunk_size"] = chunk_size
     if chunk_overlap is not None:
+        if chunk_size is not None and chunk_overlap >= chunk_size:
+            chunk_overlap = max(chunk_size - 1, 0)
         payload["chunk_overlap"] = chunk_overlap
 
     response = client.post(url, json=payload, headers=headers)
@@ -214,6 +226,32 @@ def _filter_chunks(
     for chunk in doc.chunks:
         if not force and chunk.metadata.chunk_hash in seen:
             continue
+        token_count = count_tokens(chunk.text)
+        if token_count > MAX_EMBED_TOKENS:
+            parts = split_text_by_tokens(chunk.text, MAX_EMBED_TOKENS)
+            source_text = chunk.text
+            search_pos = 0
+            for part_idx, part in enumerate(parts, start=1):
+                part_norm = normalize_text(part)
+                found = source_text.find(part_norm, search_pos)
+                if found == -1:
+                    found = search_pos
+                start = found
+                end = start + len(part_norm)
+                search_pos = end
+
+                metadata = chunk.metadata.model_dump(exclude_none=True)
+                metadata["chunk_hash"] = make_chunk_hash(part_norm)
+                metadata["char_start"] = chunk.metadata.char_start + start
+                metadata["char_end"] = chunk.metadata.char_start + end
+
+                item = {"text": part_norm, "metadata": metadata}
+                base_id = chunk.chunk_id or f"{doc.document.doc_id}:{chunk.chunk_index}"
+                item["chunk_id"] = f"{base_id}.part{part_idx}"
+                chunks.append(item)
+                hashes.append(metadata["chunk_hash"])
+            continue
+
         item = {
             "text": chunk.text,
             "metadata": chunk.metadata.model_dump(exclude_none=True),
