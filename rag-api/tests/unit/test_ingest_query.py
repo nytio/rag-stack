@@ -41,7 +41,7 @@ class DummyNode:
     content: str
     metadata: dict
 
-    def get_content(self) -> str:
+    def get_content(self, **_: Any) -> str:
         return self.content
 
 
@@ -82,7 +82,10 @@ def test_ingest_calls_index_insert(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(main, "_index", dummy_index)
     monkeypatch.setattr(main, "RAG_API_KEY", "")
 
-    dummy_nodes = [object(), object()]
+    dummy_nodes = [
+        DummyNode(content="chunk-1", metadata={"doc_id": "doc-1"}),
+        DummyNode(content="chunk-2", metadata={"doc_id": "doc-1"}),
+    ]
     monkeypatch.setattr(
         main.SentenceSplitter,
         "get_nodes_from_documents",

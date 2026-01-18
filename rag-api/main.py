@@ -1,7 +1,7 @@
 import os
 import re
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, make_url
 
 from llama_index.core import Document, StorageContext, VectorStoreIndex
-from llama_index.core.schema import TextNode
+from llama_index.core.schema import MetadataMode, TextNode
 from llama_index.core.embeddings import BaseEmbedding
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.prompts import PromptTemplate
@@ -57,11 +57,16 @@ DEFAULT_CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "900"))
 DEFAULT_CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
 DEFAULT_TOP_K = int(os.getenv("TOP_K", "5"))
 DEFAULT_EMBED_DIM = 768
+# granite-embedding-multilingual: encoder-only (XLM-RoBERTa-like) bi-encoder.
+# Inputs are text, up to 512 tokens; outputs are 768-dim embeddings.
+MAX_EMBED_TOKENS = 512
 STRICT_NO_EVIDENCE_MESSAGE = (
     "No tengo evidencia suficiente en los documentos para responder con certeza."
 )
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{8,}")
+_FALLBACK_TOKEN_RE = re.compile(r"\w+|[^\w\s]")
 _SQL_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_TOKENIZER: Optional[Callable[[str], List]] = None
 
 
 # -----------------------------
@@ -192,7 +197,14 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
         return [item["embedding"] for item in data]
 
     def _get_text_embedding(self, text: str) -> List[float]:
-        return self._post_embeddings([text])[0]
+        try:
+            return self._post_embeddings(text)[0]
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            if status_code not in (400, 422):
+                raise
+            # Fallback for runners that only accept list inputs.
+            return self._post_embeddings([text])[0]
 
     def _get_query_embedding(self, query: str) -> List[float]:
         return self._get_text_embedding(query)
@@ -217,7 +229,7 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
                 raise
             embeddings: List[List[float]] = []
             for text in texts:
-                embeddings.append(self._post_embeddings([text])[0])
+                embeddings.append(self._get_text_embedding(text))
             return embeddings
 
 
@@ -242,6 +254,38 @@ def _get_embed_dim() -> int:
             raise RuntimeError("EMBED_DIM is fixed to 768 for granite-embedding-multilingual.")
         return DEFAULT_EMBED_DIM
     return DEFAULT_EMBED_DIM
+
+
+def _get_tokenizer() -> Optional[Callable[[str], List]]:
+    global _TOKENIZER
+    if _TOKENIZER is not None:
+        return _TOKENIZER
+    try:
+        from llama_index.core.utils import get_tokenizer
+
+        _TOKENIZER = get_tokenizer()
+    except Exception:
+        _TOKENIZER = None
+    return _TOKENIZER
+
+
+def _count_text_tokens(text: str) -> int:
+    tokenizer = _get_tokenizer()
+    if tokenizer is not None:
+        return len(tokenizer(text))
+    return len(_FALLBACK_TOKEN_RE.findall(text))
+
+
+def _enforce_embed_token_limit(text: str, label: str) -> None:
+    token_count = _count_text_tokens(text)
+    if token_count > MAX_EMBED_TOKENS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{label} exceeds embedding input limit of {MAX_EMBED_TOKENS} tokens "
+                f"(counted {token_count}); truncate or chunk the input."
+            ),
+        )
 
 
 def _extract_search_tokens(text: str) -> List[str]:
@@ -452,7 +496,11 @@ def ingest(req: IngestRequest, x_api_key: Optional[str] = Header(default=None)) 
         raise HTTPException(status_code=503, detail="Index not initialized")
 
     chunk_size = req.chunk_size or DEFAULT_CHUNK_SIZE
+    if chunk_size > MAX_EMBED_TOKENS:
+        chunk_size = MAX_EMBED_TOKENS
     chunk_overlap = req.chunk_overlap or DEFAULT_CHUNK_OVERLAP
+    if chunk_overlap >= chunk_size:
+        chunk_overlap = max(chunk_size - 1, 0)
 
     # 1) Documento base con metadata
     metadata = dict(req.metadata or {})
@@ -465,6 +513,11 @@ def ingest(req: IngestRequest, x_api_key: Optional[str] = Header(default=None)) 
     nodes = splitter.get_nodes_from_documents([doc])
 
     # 3) Insertar en el índice (genera embeddings y escribe a pgvector)
+    for idx, node in enumerate(nodes, start=1):
+        _enforce_embed_token_limit(
+            node.get_content(metadata_mode=MetadataMode.NONE) or "",
+            f"chunk {idx}",
+        )
     _index.insert_nodes(nodes)
 
     return IngestResponse(doc_id=req.doc_id, chunks_indexed=len(nodes))
@@ -484,11 +537,14 @@ def ingest_chunks(
 
     doc_metadata = dict(req.metadata or {})
     nodes: List[TextNode] = []
+    chunk_count = 0
 
     for chunk in req.chunks:
         text = (chunk.text or "").strip()
         if not text:
             continue
+        chunk_count += 1
+        _enforce_embed_token_limit(text, f"chunk {chunk.chunk_id or chunk_count}")
 
         metadata = dict(doc_metadata)
         if chunk.metadata:
@@ -531,6 +587,8 @@ def query(req: QueryRequest, x_api_key: Optional[str] = Header(default=None)) ->
     retriever_kwargs: Dict[str, Any] = {"similarity_top_k": req.top_k}
     if filters is not None:
         retriever_kwargs["filters"] = filters
+
+    _enforce_embed_token_limit(req.question, "question")
 
     retriever = _index.as_retriever(**retriever_kwargs)
     query_engine_kwargs: Dict[str, Any] = {"retriever": retriever, "llm": _llm}
