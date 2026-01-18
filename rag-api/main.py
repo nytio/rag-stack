@@ -1,4 +1,5 @@
 import os
+import re
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
@@ -14,6 +15,7 @@ from llama_index.core import Document, StorageContext, VectorStoreIndex
 from llama_index.core.schema import TextNode
 from llama_index.core.embeddings import BaseEmbedding
 from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.prompts import PromptTemplate
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.llms.openai_like import OpenAILike
 from llama_index.vector_stores.postgres import PGVectorStore
@@ -55,6 +57,11 @@ DEFAULT_CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "900"))
 DEFAULT_CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
 DEFAULT_TOP_K = int(os.getenv("TOP_K", "5"))
 DEFAULT_EMBED_DIM = 768
+STRICT_NO_EVIDENCE_MESSAGE = (
+    "No tengo evidencia suficiente en los documentos para responder con certeza."
+)
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{8,}")
+_SQL_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 # -----------------------------
@@ -185,7 +192,7 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
         return [item["embedding"] for item in data]
 
     def _get_text_embedding(self, text: str) -> List[float]:
-        return self._post_embeddings(text)[0]
+        return self._post_embeddings([text])[0]
 
     def _get_query_embedding(self, query: str) -> List[float]:
         return self._get_text_embedding(query)
@@ -199,7 +206,19 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
     def get_text_embedding_batch(
         self, texts: List[str], **kwargs: Any
     ) -> List[List[float]]:
-        return self._post_embeddings(texts)
+        try:
+            return self._post_embeddings(texts)
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            if status_code not in (400, 422):
+                raise
+            # Some OpenAI-compatible runners error on batch embeddings; fall back to single requests.
+            if len(texts) <= 1:
+                raise
+            embeddings: List[List[float]] = []
+            for text in texts:
+                embeddings.append(self._post_embeddings([text])[0])
+            return embeddings
 
 
 def _make_embedder() -> OpenAICompatibleEmbedding:
@@ -223,6 +242,62 @@ def _get_embed_dim() -> int:
             raise RuntimeError("EMBED_DIM is fixed to 768 for granite-embedding-multilingual.")
         return DEFAULT_EMBED_DIM
     return DEFAULT_EMBED_DIM
+
+
+def _extract_search_tokens(text: str) -> List[str]:
+    tokens = [t for t in _TOKEN_RE.findall(text) if any(ch.isdigit() for ch in t)]
+    # Preserve order, remove duplicates
+    seen = set()
+    unique: List[str] = []
+    for token in tokens:
+        if token in seen:
+            continue
+        seen.add(token)
+        unique.append(token)
+    return unique
+
+
+def _vector_table_name() -> Optional[str]:
+    table_name = VECTOR_TABLE_NAME.lower()
+    if not _SQL_NAME_RE.match(table_name):
+        return None
+    return f"data_{table_name}"
+
+
+def _keyword_search_sources(tokens: List[str], limit: int) -> List["SourceChunk"]:
+    if _engine is None:
+        return []
+    table_name = _vector_table_name()
+    if not table_name:
+        return []
+    schema_name = getattr(_vector_store, "schema_name", "public")
+    if not _SQL_NAME_RE.match(schema_name):
+        return []
+    where_clauses = []
+    params: Dict[str, Any] = {"limit": limit}
+    for idx, token in enumerate(tokens):
+        key = f"token_{idx}"
+        where_clauses.append(f"text ILIKE :{key}")
+        params[key] = f"%{token}%"
+    if not where_clauses:
+        return []
+    stmt = text(
+        f"SELECT text, metadata_ FROM {schema_name}.{table_name} "
+        f"WHERE {' OR '.join(where_clauses)} ORDER BY id DESC LIMIT :limit"
+    )
+    with _engine.connect() as conn:
+        rows = conn.execute(stmt, params).fetchall()
+    sources: List[SourceChunk] = []
+    for row in rows:
+        metadata = row.metadata_ or {}
+        sources.append(
+            SourceChunk(
+                text=(row.text or "").strip(),
+                score=None,
+                metadata=metadata,
+            )
+        )
+    return sources
 
 
 def _build_filters(raw_filters: Dict[str, Any]) -> Optional[Any]:
@@ -440,12 +515,16 @@ def query(req: QueryRequest, x_api_key: Optional[str] = Header(default=None)) ->
         raise HTTPException(status_code=503, detail="Index not initialized")
 
     # Instrucción “estricta” (anti-alucinación) si así lo quieres:
-    strict_prefix = ""
+    text_qa_template = None
     if req.strict:
-        strict_prefix = (
+        text_qa_template = PromptTemplate(
             "Instrucciones: Responde únicamente con base en el CONTEXTO recuperado. "
             "Si el contexto no contiene evidencia suficiente, responde: "
-            "'No tengo evidencia suficiente en los documentos para responder con certeza.'\n\n"
+            f"'{STRICT_NO_EVIDENCE_MESSAGE}'\n"
+            "---------------------\n"
+            "CONTEXTO:\n{context_str}\n"
+            "---------------------\n"
+            "PREGUNTA: {query_str}\n"
         )
 
     filters = _build_filters(req.filters)
@@ -454,9 +533,12 @@ def query(req: QueryRequest, x_api_key: Optional[str] = Header(default=None)) ->
         retriever_kwargs["filters"] = filters
 
     retriever = _index.as_retriever(**retriever_kwargs)
-    query_engine = RetrieverQueryEngine.from_args(retriever=retriever, llm=_llm)
+    query_engine_kwargs: Dict[str, Any] = {"retriever": retriever, "llm": _llm}
+    if text_qa_template is not None:
+        query_engine_kwargs["text_qa_template"] = text_qa_template
+    query_engine = RetrieverQueryEngine.from_args(**query_engine_kwargs)
 
-    response = query_engine.query(strict_prefix + req.question)
+    response = query_engine.query(req.question)
 
     sources: List[SourceChunk] = []
     # LlamaIndex devuelve nodos fuente en response.source_nodes (si aplica).
@@ -472,4 +554,17 @@ def query(req: QueryRequest, x_api_key: Optional[str] = Header(default=None)) ->
                 )
             )
 
-    return QueryResponse(answer=str(response), sources=sources)
+    answer_text = str(response)
+    if req.strict:
+        tokens = _extract_search_tokens(req.question)
+        if tokens and not any(
+            token in (src.text or "") for token in tokens for src in sources
+        ):
+            keyword_sources = _keyword_search_sources(tokens, req.top_k)
+            if keyword_sources:
+                sources = keyword_sources
+        if answer_text.strip() == STRICT_NO_EVIDENCE_MESSAGE and sources:
+            # If we did retrieve context but the LLM still declined, return the top chunk as a fallback.
+            answer_text = sources[0].text
+
+    return QueryResponse(answer=answer_text, sources=sources)
