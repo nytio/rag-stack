@@ -91,6 +91,6 @@ volumes:
 
 models:
   llm:
-    model: ai/granite-4.0-h-micro
+    model: granite-4.0-h-micro
   embed:
-    model: ai/granite-embedding-multilingual
+    model: granite-embedding-multilingual
