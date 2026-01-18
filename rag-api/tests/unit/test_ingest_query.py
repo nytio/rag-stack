@@ -122,9 +122,10 @@ def test_query_builds_response_and_sources(monkeypatch: pytest.MonkeyPatch) -> N
     dummy_response = DummyResponse(text="respuesta", source_nodes=[dummy_source])
     dummy_engine = DummyQueryEngine(response=dummy_response)
 
-    def _from_args(retriever: Any, llm: Any):
+    def _from_args(retriever: Any, llm: Any, **kwargs: Any):
         assert retriever == "dummy-retriever"
         assert llm is main._llm
+        assert kwargs.get("text_qa_template") is not None
         return dummy_engine
 
     monkeypatch.setattr(main, "_build_filters", lambda _: "filters")
@@ -137,7 +138,7 @@ def test_query_builds_response_and_sources(monkeypatch: pytest.MonkeyPatch) -> N
     assert resp.sources
     assert resp.sources[0].text == "contenido"
     assert resp.sources[0].metadata["doc_id"] == "doc-1"
-    assert dummy_engine.last_query.startswith("Instrucciones:")
+    assert dummy_engine.last_query == "pregunta"
 
 
 def test_query_strict_false_does_not_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -149,7 +150,8 @@ def test_query_strict_false_does_not_prefix(monkeypatch: pytest.MonkeyPatch) -> 
     dummy_response = DummyResponse(text="respuesta", source_nodes=[])
     dummy_engine = DummyQueryEngine(response=dummy_response)
 
-    def _from_args(retriever: Any, llm: Any):
+    def _from_args(retriever: Any, llm: Any, **kwargs: Any):
+        assert "text_qa_template" not in kwargs
         return dummy_engine
 
     monkeypatch.setattr(main, "_build_filters", lambda _: None)
@@ -171,7 +173,8 @@ def test_query_without_source_nodes_returns_empty_sources(monkeypatch: pytest.Mo
     dummy_response = DummyResponse(text="respuesta", source_nodes=[])
     dummy_engine = DummyQueryEngine(response=dummy_response)
 
-    def _from_args(retriever: Any, llm: Any):
+    def _from_args(retriever: Any, llm: Any, **kwargs: Any):
+        assert kwargs.get("text_qa_template") is not None
         return dummy_engine
 
     monkeypatch.setattr(main, "_build_filters", lambda _: None)
