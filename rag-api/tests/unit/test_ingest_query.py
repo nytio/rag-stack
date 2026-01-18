@@ -107,6 +107,127 @@ def test_ingest_calls_index_insert(monkeypatch: pytest.MonkeyPatch) -> None:
     assert dummy_index.inserted == dummy_nodes
 
 
+def test_ingest_chunks_requires_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(main, "_index", None)
+    monkeypatch.setattr(main, "RAG_API_KEY", "")
+    with pytest.raises(HTTPException):
+        main.ingest_chunks(
+            main.IngestChunksRequest(doc_id="doc-1", chunks=[], metadata={})
+        )
+
+
+def test_ingest_chunks_requires_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    dummy_index = DummyIndex()
+    monkeypatch.setattr(main, "_index", dummy_index)
+    monkeypatch.setattr(main, "RAG_API_KEY", "")
+
+    with pytest.raises(HTTPException) as excinfo:
+        main.ingest_chunks(main.IngestChunksRequest(doc_id="doc-1", chunks=[], metadata={}))
+    assert excinfo.value.status_code == 400
+
+
+def test_ingest_chunks_rejects_all_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    dummy_index = DummyIndex()
+    monkeypatch.setattr(main, "_index", dummy_index)
+    monkeypatch.setattr(main, "RAG_API_KEY", "")
+
+    req = main.IngestChunksRequest(
+        doc_id="doc-1",
+        chunks=[
+            main.IngestChunk(text="   ", metadata={"page": 1}, chunk_id="c1"),
+            main.IngestChunk(text="\n", metadata={"page": 2}),
+        ],
+        metadata={"title": "demo"},
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        main.ingest_chunks(req)
+    assert excinfo.value.status_code == 400
+
+
+def test_ingest_chunks_merges_metadata_and_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    class DummyTextNode:
+        def __init__(self, text: str, metadata: dict, id_: str | None = None) -> None:
+            self.text = text
+            self.metadata = metadata
+            self.id_ = id_
+
+    dummy_index = DummyIndex()
+    monkeypatch.setattr(main, "_index", dummy_index)
+    monkeypatch.setattr(main, "RAG_API_KEY", "")
+    monkeypatch.setattr(main, "TextNode", DummyTextNode)
+    monkeypatch.setattr(main, "_enforce_embed_token_limit", lambda *_: None)
+
+    req = main.IngestChunksRequest(
+        doc_id="doc-1",
+        chunks=[
+            main.IngestChunk(
+                text="chunk-1",
+                metadata={"page": 1, "title": "override"},
+                chunk_id="c1",
+            ),
+            main.IngestChunk(text="chunk-2", metadata={"page": 2}),
+        ],
+        metadata={"title": "doc-title", "source": "pdf"},
+    )
+
+    resp = main.ingest_chunks(req)
+
+    assert resp.doc_id == "doc-1"
+    assert resp.chunks_indexed == 2
+    assert len(dummy_index.inserted) == 2
+
+    first = dummy_index.inserted[0]
+    assert first.text == "chunk-1"
+    assert first.id_ == "c1"
+    assert first.metadata["doc_id"] == "doc-1"
+    assert first.metadata["chunk_id"] == "c1"
+    assert first.metadata["page"] == 1
+    assert first.metadata["title"] == "override"
+    assert first.metadata["source"] == "pdf"
+
+    second = dummy_index.inserted[1]
+    assert second.text == "chunk-2"
+    assert second.id_ is None
+    assert second.metadata["doc_id"] == "doc-1"
+    assert "chunk_id" not in second.metadata
+    assert second.metadata["page"] == 2
+    assert second.metadata["title"] == "doc-title"
+
+
+def test_ingest_chunks_enforces_token_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    class DummyTextNode:
+        def __init__(self, text: str, metadata: dict, id_: str | None = None) -> None:
+            self.text = text
+            self.metadata = metadata
+            self.id_ = id_
+
+    calls: List[tuple[str, str]] = []
+
+    def _record_limit(text: str, label: str) -> None:
+        calls.append((text, label))
+
+    dummy_index = DummyIndex()
+    monkeypatch.setattr(main, "_index", dummy_index)
+    monkeypatch.setattr(main, "RAG_API_KEY", "")
+    monkeypatch.setattr(main, "TextNode", DummyTextNode)
+    monkeypatch.setattr(main, "_enforce_embed_token_limit", _record_limit)
+
+    req = main.IngestChunksRequest(
+        doc_id="doc-1",
+        chunks=[
+            main.IngestChunk(text="  hola  ", metadata={}, chunk_id="c1"),
+            main.IngestChunk(text="   ", metadata={"page": 2}),
+            main.IngestChunk(text="adios", metadata={"page": 3}),
+        ],
+        metadata={},
+    )
+
+    resp = main.ingest_chunks(req)
+
+    assert resp.chunks_indexed == 2
+    assert calls == [("hola", "chunk c1"), ("adios", "chunk 2")]
+
 def test_query_requires_index(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(main, "_index", None)
     monkeypatch.setattr(main, "RAG_API_KEY", "")
