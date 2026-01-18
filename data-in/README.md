@@ -58,6 +58,12 @@ Subir a `rag-api` (opcion A):
 python data-in/cli.py push --input ./data-out --rag-api http://localhost:8000 --mode ingest
 ```
 
+Subir chunks pre-construidos (opcion B, 1:1 con el JSON):
+
+```bash
+python data-in/cli.py push --input ./data-out --rag-api http://localhost:8000 --mode ingest_chunks
+```
+
 ## Estructura
 
 ```
@@ -94,3 +100,4 @@ data-in/
 - El modo `push` soporta `ingest` (endpoint actual) y `ingest_chunks` (si se implementa en `rag-api`).
 - En modo `auto`, intenta `ingest_chunks` y hace fallback a `ingest` si recibe 404.
 - Se guarda un cache local en `data-out/.push_state.json` para idempotencia por `file_hash` y `chunk_hash`.
+- `ingest_chunks` preserva `chunk_index`, `chunk_id`, `page_start/end` y demas metadatos generados en `data-in`.

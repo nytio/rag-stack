@@ -11,6 +11,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, make_url
 
 from llama_index.core import Document, StorageContext, VectorStoreIndex
+from llama_index.core.schema import TextNode
 from llama_index.core.embeddings import BaseEmbedding
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.query_engine import RetrieverQueryEngine
@@ -70,6 +71,18 @@ class IngestRequest(BaseModel):
 class IngestResponse(BaseModel):
     doc_id: str
     chunks_indexed: int
+
+
+class IngestChunk(BaseModel):
+    text: str = Field(..., description="Texto del chunk pre-construido.")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    chunk_id: Optional[str] = Field(None, description="ID opcional del chunk (estable).")
+
+
+class IngestChunksRequest(BaseModel):
+    doc_id: str = Field(..., description="Identificador del documento (externo).")
+    chunks: List[IngestChunk]
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class QueryRequest(BaseModel):
@@ -377,6 +390,43 @@ def ingest(req: IngestRequest, x_api_key: Optional[str] = Header(default=None)) 
     nodes = splitter.get_nodes_from_documents([doc])
 
     # 3) Insertar en el índice (genera embeddings y escribe a pgvector)
+    _index.insert_nodes(nodes)
+
+    return IngestResponse(doc_id=req.doc_id, chunks_indexed=len(nodes))
+
+
+@app.post("/ingest_chunks", response_model=IngestResponse)
+def ingest_chunks(
+    req: IngestChunksRequest, x_api_key: Optional[str] = Header(default=None)
+) -> IngestResponse:
+    _require_api_key(x_api_key)
+
+    if _index is None:
+        raise HTTPException(status_code=503, detail="Index not initialized")
+
+    if not req.chunks:
+        raise HTTPException(status_code=400, detail="No chunks provided")
+
+    doc_metadata = dict(req.metadata or {})
+    nodes: List[TextNode] = []
+
+    for chunk in req.chunks:
+        text = (chunk.text or "").strip()
+        if not text:
+            continue
+
+        metadata = dict(doc_metadata)
+        if chunk.metadata:
+            metadata.update(chunk.metadata)
+        metadata["doc_id"] = req.doc_id
+        if chunk.chunk_id:
+            metadata["chunk_id"] = chunk.chunk_id
+
+        nodes.append(TextNode(text=text, metadata=metadata, id_=chunk.chunk_id))
+
+    if not nodes:
+        raise HTTPException(status_code=400, detail="All chunks are empty")
+
     _index.insert_nodes(nodes)
 
     return IngestResponse(doc_id=req.doc_id, chunks_indexed=len(nodes))

@@ -7,6 +7,7 @@ Servicio RAG construido con FastAPI, LlamaIndex y Postgres/pgvector, integrado c
 | --- | --- | --- |
 | GET | /healthz | Estado del servicio y configuración básica |
 | POST | /ingest | Indexa texto y metadata en pgvector |
+| POST | /ingest_chunks | Indexa chunks pre-construidos (sin re-chunking) |
 | POST | /query | Recupera contexto y responde con fuentes |
 
 ### Health check
@@ -74,6 +75,37 @@ Sugerencias:
 - Usa tipos consistentes (si `page` es int, siempre int).
 - Mantén los valores cortos y útiles para filtros/seguimiento.
 - Guarda solo metadatos que planeas filtrar en Query.
+
+### Ingest de chunks pre-construidos
+
+Permite subir chunks ya generados (por ejemplo desde `data-in`) sin que el servidor haga re-chunking.
+
+```bash
+curl -X POST http://localhost:8000/ingest_chunks \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <tu-clave>" \
+  -d '{
+    "doc_id": "doc-1",
+    "metadata": {"source_path": "docs/manual.pdf"},
+    "chunks": [
+      {
+        "chunk_id": "doc-1:0",
+        "text": "Primer chunk...",
+        "metadata": {"page_start": 1, "page_end": 1, "chunk_index": 0}
+      },
+      {
+        "chunk_id": "doc-1:1",
+        "text": "Segundo chunk...",
+        "metadata": {"page_start": 2, "page_end": 2, "chunk_index": 1}
+      }
+    ]
+  }'
+```
+
+Notas:
+- `doc_id` se fuerza en metadata de todos los chunks (útil para filtros).
+- `metadata` a nivel documento se mezcla con la metadata de cada chunk.
+- `chunk_id` es opcional pero recomendado para estabilidad e idempotencia.
 
 ### Query
 ```bash
