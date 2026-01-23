@@ -60,14 +60,16 @@ python data-in/cli.py enrich \
 Subir a `rag-api` (opcion A):
 
 ```bash
-python data-in/cli.py push --input ./data-out --rag-api http://localhost:8000 --mode ingest
+python data-in/cli.py push --input ./data-out --rag-api http://localhost:8000 --mode ingest --api-key "clave"
 ```
 
 Subir chunks pre-construidos (opcion B, 1:1 con el JSON):
 
 ```bash
-python data-in/cli.py push --input ./data-out --rag-api http://localhost:8000 --mode ingest_chunks
+python data-in/cli.py push --input ./data-out --rag-api http://localhost:8000 --mode ingest_chunks --api-key "clave"
 ```
+
+Nota: `--api-key` es opcional; solo es necesario si `RAG_API_KEY` esta habilitado en `rag-api`.
 
 ## Opcion A vs Opcion B
 
@@ -81,7 +83,7 @@ python data-in/cli.py push --input ./data-out --rag-api http://localhost:8000 --
   - **Preprocess recomendado**: enfocar en **chunking de alta calidad** (parrafos completos, `chunk_size`/`chunk_overlap` afinados) y metadatos ricos por chunk. Revisar `document.json` antes de ingestar para asegurar cortes correctos y coherencia.
   - **Comando ejemplo**:
     ```bash
-    python data-in/cli.py preprocess --input ./docs --output ./data-out --recursive --chunk-size 900 --chunk-overlap 120 --strategy by_chars
+    python data-in/cli.py preprocess --input ./docs --output ./data-out --recursive --chunk-size 512 --chunk-overlap 64 --strategy by_chars
     ```
 
 ## Estructura

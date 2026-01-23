@@ -31,7 +31,7 @@ services:
     volumes:
       - open-webui-data:/app/backend/data
     extra_hosts:
-      - "model-runner.docker.internal:host-gateway"
+      - "model-runner:host-gateway"
     models:
       - llm
       - embed
@@ -63,7 +63,7 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     extra_hosts:
-      - "model-runner.docker.internal:host-gateway"
+      - "model-runner:host-gateway"
     models:
       - llm
       - embed
@@ -92,5 +92,15 @@ volumes:
 models:
   llm:
     model: granite-4.0-h-micro
+    context_size: 2048
+    runtime_flags:
+      - "--temp"
+      - "0.0"
+      - "--top-k"
+      - "1"
+      - "--threads"
+      - "4"
+      - "--reasoning-budget"
+      - "0"
   embed:
     model: granite-embedding-multilingual

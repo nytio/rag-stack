@@ -132,7 +132,7 @@ WEBUI_SECRET_KEY=changeme
 OPENAI_API_KEY=sk-local
 
 # URL OpenAI-compatible del runner (desde contenedores)
-OPENAI_API_BASE=http://model-runner.docker.internal:12434/v1
+OPENAI_API_BASE=http://model-runner:12434/v1
 
 # Nombres de modelos tal como aparecen en `docker model list`
 LLM_MODEL=ai/granite-4.0-h-small:32B-Q4_K_M

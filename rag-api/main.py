@@ -188,23 +188,37 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
             headers["Authorization"] = f"Bearer {self._api_key}"
         return headers
 
-    def _post_embeddings(self, inputs: Any) -> List[List[float]]:
+    def _post_embeddings(
+        self, inputs: Any, include_encoding_format: bool = True
+    ) -> List[List[float]]:
         url = f"{self._api_base}/embeddings"
         payload = {"model": self._model, "input": inputs}
+        if include_encoding_format:
+            payload["encoding_format"] = "float"
         response = self._client.post(url, json=payload, headers=self._headers())
         response.raise_for_status()
         data = response.json().get("data", [])
         return [item["embedding"] for item in data]
 
+    def _post_embeddings_with_encoding_fallback(self, inputs: Any) -> List[List[float]]:
+        try:
+            return self._post_embeddings(inputs, include_encoding_format=True)
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            if status_code not in (400, 422):
+                raise
+        # Fallback for OpenAI-compatible servers that reject unknown fields.
+        return self._post_embeddings(inputs, include_encoding_format=False)
+
     def _get_text_embedding(self, text: str) -> List[float]:
         try:
-            return self._post_embeddings(text)[0]
+            return self._post_embeddings_with_encoding_fallback(text)[0]
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code if exc.response is not None else None
             if status_code not in (400, 422):
                 raise
             # Fallback for runners that only accept list inputs.
-            return self._post_embeddings([text])[0]
+            return self._post_embeddings_with_encoding_fallback([text])[0]
 
     def _get_query_embedding(self, query: str) -> List[float]:
         return self._get_text_embedding(query)
@@ -219,7 +233,7 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
         self, texts: List[str], **kwargs: Any
     ) -> List[List[float]]:
         try:
-            return self._post_embeddings(texts)
+            return self._post_embeddings_with_encoding_fallback(texts)
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code if exc.response is not None else None
             if status_code not in (400, 422):
