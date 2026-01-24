@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chat Esperanza</title>
+  <link rel="stylesheet" href="chat.css?20250419">
+</head>
+<body>
+  <div class="chat-container" role="main" aria-label="Chat con asistente Esperanza">
+    <div class="chat-header" aria-live="polite">
+      <img src="logo.svg" alt="" role="presentation">
+      <div>
+        <strong>¡Hola! Soy Esperanza</strong>, asistente virtual que funciona con IA. Estoy aquí para aclarar tus dudas sobre el Programa de Gobierno 2024–2030.<br>Cuéntame, ¿en qué puedo ayudarte hoy?
+      </div>
+    </div>
+    <div class="chat-message" id="chat-log" aria-live="polite"></div>
+    <div class="chat-input-area">
+      <input type="text" id="user-input" placeholder="Escribe tu mensaje..." aria-label="Campo para escribir tu mensaje" tabindex="0"/>
+<button id="mic-button" aria-label="Activar reconocimiento de voz" title="Hablar ahora" tabindex="0">
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" version="1.1" viewBox="0 0 94.687 96.002" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <g transform="translate(-39.554 -26.694)">
+      <path d="m90.916 26.825c18.23 1.3258 34.551 14.572 40.538 31.692 4.8618 12.97 3.4191 28.077-3.3216 40.117-9.13 16.055-28.073 26.124-46.529 23.768-19.37-1.9516-36.479-17.237-40.67-36.246-3.3154-13.324-0.74606-28.046 7.465-39.132 8.7704-12.366 23.449-20.539 38.74-20.327 1.2603-0.0059 2.5241-0.0069 3.7789 0.12782m-4.9212 15.782c-6.9449 0.25532-11.969 7.1229-11.561 13.798-0.07435 6.5985-0.16836 13.236 0.31161 19.811 0.65206 7.6237 9.3144 13.381 16.525 10.344 5.4821-1.996 8.8026-7.8628 8.3003-13.587 0.29629-6.8481 0.56167-13.766-0.02625-20.589-1.1927-6.1-7.3629-10.601-13.55-9.7777zm-19.752 28.329c-3.176 2.9306-0.81138 8.1678 0.02805 11.819 2.5891 7.7675 9.971 13.195 17.928 14.392-0.01847 2.118-0.03708 4.236-0.05583 6.354-3.3015 0.10586-6.6363-0.0982-9.911 0.28785-4.7362 4.0413 2.5853 6.3305 6.0646 5.2118 6.3595 7.4e-4 12.729 0.12532 19.082-0.17067 4.8119-3.4837-1.9403-6.6572-5.4346-5.2822-1.2129-0.43613-4.175 0.87224-4.0927-0.85574-0.01633-1.8587-0.03266-3.7175-0.04899-5.5762 9.7327-1.3622 18.245-9.3893 19.313-19.299 1.7174-3.513-1.4649-10.103-5.0874-5.582-0.32543 4.1258-0.71257 8.4958-3.2686 11.965-4.9818 7.8679-17.02 9.8769-24.027 3.6178-4.5046-3.4742-6.4909-9.1889-6.4835-14.73-0.19166-1.8952-2.3652-2.8322-4.0052-2.1521"
+       fill="#002B5C" fill-rule="evenodd"/>
+     </g>
+  </svg>
+</button>
+<button id="mute-button" aria-label="Silenciar lectura de voz" title="Silenciar lectura de voz" tabindex="0">
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" version="1.1" viewBox="0 0 94.87 95.164" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <g transform="translate(-63.765 -66.94)">
+      <path d="m107.95 66.998c-21.438 1.612-40.367 19.256-43.546 40.497-2.754 15.939 3.3709 33.085 15.896 43.417 12.75 10.953 31.406 14.112 47.176 8.3789 14.033-4.8728 25.572-16.766 29.21-31.274 4.0368-13.67 1.8822-29.112-6.4048-40.791-8.6782-12.654-23.741-20.987-39.226-20.286-1.0352 6.46e-4 -2.0708 7e-3 -3.105 0.05796m9.5197 20.755c3.2259 3.4307 0.79387 9.6159 1.6367 14.14 0.0101 12.484 0.17427 24.975-0.14623 37.454-3.1811 4.5404-7.3112-2.4058-10.145-4.2412-3.4086-2.9498-6.6818-6.0539-10.144-8.9414-4.0416-0.18973-8.2152 0.46286-12.152-0.47654-4.1233-2.8698-1.5555-8.7145-2.2755-12.924-0.0019-3.8333-0.9459-10.326 4.5883-10.468 4.0933-0.90438 9.3377 1.3783 12.627-1.6131 4.584-4.2002 9.1932-8.3742 13.765-12.586 0.64815-0.38552 1.5117-0.72736 2.2465-0.34495m10.462 15.135c7.6084 0.82158 12.206 10.224 8.718 16.921-2.0754 4.4146-7.2014 7.2327-12.038 6.1893-0.26559-7.6077-0.0686-15.234-0.11534-22.849 0.8892-0.79065 2.3797-0.30441 3.4346-0.26142"
+       fill="#002B5C" fill-rule="evenodd" stroke-width=".26458"/>
+     </g>
+  </svg>
+</button>
+<button id="send-button" aria-label="Enviar mensaje" title="Enviar mensaje" tabindex="0">
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" version="1.1" viewBox="0 0 94.892 96.23" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <g transform="translate(-57.415 -100.28)">
+      <path d="m101.23 100.43c-21.671 1.2592-41.059 19.413-43.333 41.073-2.679 17.732 5.2805 36.69 20.263 46.71 15.654 11.206 38.302 11.028 53.855-0.28137 13.161-9.0752 21.23-25.054 20.279-41.062-0.10328-20.421-15.076-39.877-34.925-44.892-5.243-1.3143-10.733-2.0071-16.14-1.5479m6.2971 21.737c5.0348 1.2992 7.5141 6.6824 11.382 9.7981 4.6451 5.0095 9.5961 9.7625 13.984 14.996 2.735 3.5565-0.25724 8.7479-4.5669 8.7018-4.3897-0.12463-7.3119-4.0725-10.745-6.3183-2.0068-1.1855-6.2415-6.4807-5.1097-0.87908-0.12204 7.1913 0.15927 14.4-0.18193 21.581-0.83899 6.107-10.948 5.9982-12.023 0.0693-0.22484-8.1535-0.0721-16.348-0.0964-24.484-4.5401 2.6446-8.4255 6.5586-12.923 9.3548-4.236 2.0377-10.434-2.6472-7.8059-7.2537 3.0808-4.9964 8.035-8.4939 11.768-12.987 3.9382-3.6794 7.2086-8.0908 11.456-11.408 1.449-0.84183 3.1673-1.4455 4.8614-1.1703"
+       fill="#002B5C" fill-rule="evenodd" stroke-width=".26458"/>
+     </g>
+  </svg>    
+</button>
+    </div>
+  </div>
+<div id="voice-status" aria-live="assertive"
+  style="position: absolute; left: -9999px; height: 1px; width: 1px; overflow: hidden;"></div>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/markdown-it/dist/markdown-it.min.js"></script>
+<script src="chat.js?20250419"></script>
+</body>
+</html>
