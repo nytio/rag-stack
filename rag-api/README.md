@@ -9,6 +9,7 @@ Servicio RAG construido con FastAPI, LlamaIndex y Postgres/pgvector, integrado c
 | POST | /ingest | Indexa texto y metadata en pgvector |
 | POST | /ingest_chunks | Indexa chunks pre-construidos (sin re-chunking) |
 | POST | /query | Recupera contexto y responde con fuentes |
+| POST | /delete | Borra un documento y sus chunks por `doc_id` |
 
 ### Health check
 ```bash
@@ -49,7 +50,7 @@ X-API-Key: <tu-clave>
 curl -X POST http://localhost:8000/ingest \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <tu-clave>" \
-  -d '{"doc_id":"doc-1","text":"Texto del documento...","metadata":{"filename":"manual.pdf","page":3},"chunk_size":900,"chunk_overlap":120}'
+  -d '{"doc_id":"doc-1","text":"Texto del documento...","metadata":{"filename":"manual.pdf","page":3,"chunk_id":"doc-1:0","chunk_index":0},"chunk_size":900,"chunk_overlap":120}'
 ```
 
 Parámetros del `-d`:
@@ -57,7 +58,7 @@ Parámetros del `-d`:
 | --- | --- | --- | --- |
 | doc_id | string | sí | identificador del documento; se guarda en metadata |
 | text | string | sí | texto limpio; sin imágenes ni binarios |
-| metadata | object | no | metadatos libres (p. ej. `filename`, `source`, `page`) |
+| metadata | object | no | metadatos libres (p. ej. `filename`, `source`, `page`, `chunk_id`, `chunk_index`) |
 | chunk_size | int | no | tamaño de chunk; mínimo 200, máximo 4000 |
 | chunk_overlap | int | no | solapamiento; mínimo 0, máximo 1000 |
 
@@ -67,7 +68,8 @@ Ejemplos de Metadata recomendados:
 - `document` (string): título del documento.
 - `source` o `url` (string): origen del documento.
 - `section` o `heading` (string): sección o encabezado si lo extraes.
-- `chunk_index` (int): índice del chunk dentro del documento.
+- `chunk_id` (string): ID estable del chunk; permite upsert.
+- `chunk_index` (int): índice del chunk dentro del documento (usable para upsert).
 - `question` (string): preguntas que el chunk puede resolver.
 - `adjacent_summary` (string): resumen de los chunks adyacentes.
 
@@ -75,10 +77,12 @@ Sugerencias:
 - Usa tipos consistentes (si `page` es int, siempre int).
 - Mantén los valores cortos y útiles para filtros/seguimiento.
 - Guarda solo metadatos que planeas filtrar en Query.
+- Si incluyes `chunk_id` o `chunk_index`, el servidor intentará hacer upsert del chunk en `/ingest`.
 
 ### Ingest de chunks pre-construidos
 
 Permite subir chunks ya generados (por ejemplo desde `data-in`) sin que el servidor haga re-chunking.
+Esta operación **reemplaza** el `doc_id`: primero borra los chunks previos y luego inserta los nuevos.
 
 ```bash
 curl -X POST http://localhost:8000/ingest_chunks \
@@ -89,11 +93,13 @@ curl -X POST http://localhost:8000/ingest_chunks \
     "metadata": {"source_path": "docs/manual.pdf"},
     "chunks": [
       {
+        "chunk_index": 0,
         "chunk_id": "doc-1:0",
         "text": "Primer chunk...",
         "metadata": {"page_start": 1, "page_end": 1, "chunk_index": 0}
       },
       {
+        "chunk_index": 1,
         "chunk_id": "doc-1:1",
         "text": "Segundo chunk...",
         "metadata": {"page_start": 2, "page_end": 2, "chunk_index": 1}
@@ -106,6 +112,7 @@ Notas:
 - `doc_id` se fuerza en metadata de todos los chunks (útil para filtros).
 - `metadata` a nivel documento se mezcla con la metadata de cada chunk.
 - `chunk_id` es opcional pero recomendado para estabilidad e idempotencia.
+- Si no envías `chunk_id`, se intentará derivar usando `doc_id:chunk_index`.
 
 ### Query
 ```bash
@@ -127,3 +134,20 @@ Limitaciones esperadas:
 - La respuesta depende del contenido previamente ingestado.
 - `filters` solo aplica sobre metadatos disponibles en los chunks.
 - `top_k` está limitado a 20.
+
+### Delete
+```bash
+curl -X POST http://localhost:8000/delete \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <tu-clave>" \
+  -d '{"doc_id":"doc-1"}'
+```
+
+Respuesta esperada:
+```json
+{"doc_id":"doc-1","deleted":true}
+```
+
+Notas:
+- `doc_id` debe coincidir con el identificador usado en ingest (p. ej. hash del documento).
+- Borra todos los chunks asociados a ese `doc_id`.

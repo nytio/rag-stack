@@ -36,6 +36,14 @@ class DummyIndex:
         return "dummy-retriever"
 
 
+class DummyVectorStore:
+    def __init__(self) -> None:
+        self.deleted: str | None = None
+
+    def delete(self, ref_doc_id: str, **_: Any) -> None:
+        self.deleted = ref_doc_id
+
+
 @dataclass
 class DummyNode:
     content: str
@@ -119,6 +127,7 @@ def test_ingest_chunks_requires_index(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_ingest_chunks_requires_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
     dummy_index = DummyIndex()
     monkeypatch.setattr(main, "_index", dummy_index)
+    monkeypatch.setattr(main, "_vector_store", DummyVectorStore())
     monkeypatch.setattr(main, "RAG_API_KEY", "")
 
     with pytest.raises(HTTPException) as excinfo:
@@ -129,6 +138,7 @@ def test_ingest_chunks_requires_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_ingest_chunks_rejects_all_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     dummy_index = DummyIndex()
     monkeypatch.setattr(main, "_index", dummy_index)
+    monkeypatch.setattr(main, "_vector_store", DummyVectorStore())
     monkeypatch.setattr(main, "RAG_API_KEY", "")
 
     req = main.IngestChunksRequest(
@@ -154,6 +164,7 @@ def test_ingest_chunks_merges_metadata_and_ids(monkeypatch: pytest.MonkeyPatch) 
 
     dummy_index = DummyIndex()
     monkeypatch.setattr(main, "_index", dummy_index)
+    monkeypatch.setattr(main, "_vector_store", DummyVectorStore())
     monkeypatch.setattr(main, "RAG_API_KEY", "")
     monkeypatch.setattr(main, "TextNode", DummyTextNode)
     monkeypatch.setattr(main, "_enforce_embed_token_limit", lambda *_: None)
@@ -209,6 +220,7 @@ def test_ingest_chunks_enforces_token_limits(monkeypatch: pytest.MonkeyPatch) ->
 
     dummy_index = DummyIndex()
     monkeypatch.setattr(main, "_index", dummy_index)
+    monkeypatch.setattr(main, "_vector_store", DummyVectorStore())
     monkeypatch.setattr(main, "RAG_API_KEY", "")
     monkeypatch.setattr(main, "TextNode", DummyTextNode)
     monkeypatch.setattr(main, "_enforce_embed_token_limit", _record_limit)
@@ -307,3 +319,20 @@ def test_query_without_source_nodes_returns_empty_sources(monkeypatch: pytest.Mo
     resp = main.query(main.QueryRequest(question="pregunta", top_k=3, strict=True))
 
     assert resp.sources == []
+
+
+def test_delete_requires_vector_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(main, "_vector_store", None)
+    monkeypatch.setattr(main, "RAG_API_KEY", "")
+    with pytest.raises(HTTPException) as excinfo:
+        main.delete_doc(main.DeleteRequest(doc_id="doc-1"))
+    assert excinfo.value.status_code == 503
+
+
+def test_delete_calls_vector_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    dummy_store = DummyVectorStore()
+    monkeypatch.setattr(main, "_vector_store", dummy_store)
+    monkeypatch.setattr(main, "RAG_API_KEY", "")
+    resp = main.delete_doc(main.DeleteRequest(doc_id="doc-1"))
+    assert resp["deleted"] is True
+    assert dummy_store.deleted == "doc-1"

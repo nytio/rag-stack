@@ -89,6 +89,9 @@ class IngestChunk(BaseModel):
     text: str = Field(..., description="Texto del chunk pre-construido.")
     metadata: Dict[str, Any] = Field(default_factory=dict)
     chunk_id: Optional[str] = Field(None, description="ID opcional del chunk (estable).")
+    chunk_index: Optional[int] = Field(
+        None, ge=0, description="Indice opcional del chunk dentro del documento."
+    )
 
 
 class IngestChunksRequest(BaseModel):
@@ -114,6 +117,10 @@ class SourceChunk(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     sources: List[SourceChunk]
+
+
+class DeleteRequest(BaseModel):
+    doc_id: str = Field(..., description="Identificador del documento (externo).")
 
 
 # -----------------------------
@@ -300,6 +307,70 @@ def _enforce_embed_token_limit(text: str, label: str) -> None:
                 f"(counted {token_count}); truncate or chunk the input."
             ),
         )
+
+
+def _normalize_chunk_id(value: Any) -> Optional[str]:
+    if isinstance(value, str):
+        chunk_id = value.strip()
+        if chunk_id:
+            return chunk_id
+    return None
+
+
+def _normalize_chunk_index(value: Any) -> Optional[int]:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        if raw.isdigit():
+            return int(raw)
+    return None
+
+
+def _assign_upsert_node_ids(
+    nodes: List[TextNode],
+    *,
+    doc_id: str,
+    base_chunk_id: Optional[str],
+    base_chunk_index: Optional[int],
+) -> List[str]:
+    if not nodes:
+        return []
+
+    if base_chunk_id:
+        if len(nodes) == 1:
+            node_id = base_chunk_id
+            nodes[0].id_ = node_id
+            nodes[0].metadata["chunk_id"] = base_chunk_id
+            if base_chunk_index is not None:
+                nodes[0].metadata.setdefault("chunk_index", base_chunk_index)
+            return [node_id]
+
+        node_ids: List[str] = []
+        for idx, node in enumerate(nodes):
+            node_id = f"{base_chunk_id}:{idx}"
+            node.id_ = node_id
+            node.metadata["chunk_id"] = base_chunk_id
+            node.metadata.setdefault("chunk_subindex", idx)
+            if base_chunk_index is not None:
+                node.metadata.setdefault("chunk_index", base_chunk_index + idx)
+            node_ids.append(node_id)
+        return node_ids
+
+    if base_chunk_index is not None:
+        node_ids = []
+        for idx, node in enumerate(nodes):
+            chunk_index = base_chunk_index + idx
+            node_id = f"{doc_id}:{chunk_index}"
+            node.id_ = node_id
+            node.metadata.setdefault("chunk_index", chunk_index)
+            node.metadata.setdefault("chunk_id", node_id)
+            node_ids.append(node_id)
+        return node_ids
+
+    return []
 
 
 def _extract_search_tokens(text: str) -> List[str]:
@@ -519,6 +590,8 @@ def ingest(req: IngestRequest, x_api_key: Optional[str] = Header(default=None)) 
     # 1) Documento base con metadata
     metadata = dict(req.metadata or {})
     metadata["doc_id"] = req.doc_id
+    base_chunk_id = _normalize_chunk_id(metadata.get("chunk_id"))
+    base_chunk_index = _normalize_chunk_index(metadata.get("chunk_index"))
 
     doc = Document(text=req.text, metadata=metadata, id_=req.doc_id)
 
@@ -526,12 +599,28 @@ def ingest(req: IngestRequest, x_api_key: Optional[str] = Header(default=None)) 
     splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     nodes = splitter.get_nodes_from_documents([doc])
 
+    for node in nodes:
+        node.metadata["doc_id"] = req.doc_id
+        if base_chunk_id:
+            node.metadata.setdefault("chunk_id", base_chunk_id)
+        if base_chunk_index is not None:
+            node.metadata.setdefault("chunk_index", base_chunk_index)
+
+    node_ids_to_upsert = _assign_upsert_node_ids(
+        nodes,
+        doc_id=req.doc_id,
+        base_chunk_id=base_chunk_id,
+        base_chunk_index=base_chunk_index,
+    )
+
     # 3) Insertar en el índice (genera embeddings y escribe a pgvector)
     for idx, node in enumerate(nodes, start=1):
         _enforce_embed_token_limit(
             node.get_content(metadata_mode=MetadataMode.NONE) or "",
             f"chunk {idx}",
         )
+    if node_ids_to_upsert and _vector_store is not None:
+        _vector_store.delete_nodes(node_ids=node_ids_to_upsert)
     _index.insert_nodes(nodes)
 
     return IngestResponse(doc_id=req.doc_id, chunks_indexed=len(nodes))
@@ -564,14 +653,26 @@ def ingest_chunks(
         if chunk.metadata:
             metadata.update(chunk.metadata)
         metadata["doc_id"] = req.doc_id
-        if chunk.chunk_id:
-            metadata["chunk_id"] = chunk.chunk_id
+        chunk_index = chunk.chunk_index
+        if chunk_index is None:
+            chunk_index = _normalize_chunk_index(metadata.get("chunk_index"))
+        chunk_id = _normalize_chunk_id(chunk.chunk_id)
+        if not chunk_id:
+            chunk_id = _normalize_chunk_id(metadata.get("chunk_id"))
+        if not chunk_id and chunk_index is not None:
+            chunk_id = f"{req.doc_id}:{chunk_index}"
+        if chunk_id:
+            metadata["chunk_id"] = chunk_id
+        if chunk_index is not None:
+            metadata.setdefault("chunk_index", chunk_index)
 
-        nodes.append(TextNode(text=text, metadata=metadata, id_=chunk.chunk_id))
+        nodes.append(TextNode(text=text, metadata=metadata, id_=chunk_id))
 
     if not nodes:
         raise HTTPException(status_code=400, detail="All chunks are empty")
 
+    if _vector_store is not None:
+        _vector_store.delete(ref_doc_id=req.doc_id)
     _index.insert_nodes(nodes)
 
     return IngestResponse(doc_id=req.doc_id, chunks_indexed=len(nodes))
@@ -640,3 +741,16 @@ def query(req: QueryRequest, x_api_key: Optional[str] = Header(default=None)) ->
             answer_text = sources[0].text
 
     return QueryResponse(answer=answer_text, sources=sources)
+
+
+@app.post("/delete")
+def delete_doc(
+    req: DeleteRequest, x_api_key: Optional[str] = Header(default=None)
+) -> Dict[str, Any]:
+    _require_api_key(x_api_key)
+
+    if _vector_store is None:
+        raise HTTPException(status_code=503, detail="Vector store not initialized")
+
+    _vector_store.delete(ref_doc_id=req.doc_id)
+    return {"doc_id": req.doc_id, "deleted": True}
