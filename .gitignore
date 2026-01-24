@@ -4,11 +4,14 @@
 *~
 *.swp
 *.swo
+.svg
 __pycache__/
 docs/**
 data-out/**
 data-in/.cache/**
+chat/docs/**
 !docs/.gitkeep
 !data-out/.gitkeep
 !data-in/.cache/.gitkeep
 !data-out/.cache/.gitkeep
+!chat/docs/.gitkeep
