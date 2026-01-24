@@ -4,7 +4,7 @@
 *~
 *.swp
 *.swo
-.svg
+*.svg
 __pycache__/
 docs/**
 data-out/**
